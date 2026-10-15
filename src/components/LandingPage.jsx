@@ -16,7 +16,7 @@ export function LandingPage() {
      setBtnText("Processing...");
      setBtnDisaled(true);
     try {
-     const res = await fetch("http://64.227.45.0:3000/create-room");
+     const res = await fetch("https://api.domtech.co.ke⁠/create-room");
      const data = await res.json();
 
      if (data?.successful) {

@@ -18,7 +18,7 @@ import { device } from "../utils//mediasoup.js";
  
  const participantId = localStorage.getItem("participantId");
  
- let ws = new WebSocket("ws://64.227.45.0:3000/");
+ let ws = new WebSocket("ws://api.domtech.co.ke⁠");
  let retryTimer;
 
  const sendTransportRef = useRef(null);
@@ -40,9 +40,7 @@ import { device } from "../utils//mediasoup.js";
 
 
 async function startSpeaking() {
-  alert("start speaking called");
   try {
-    // 1. Check that the send transport exists
     const sendTransport = sendTransportRef.current;
 
     if (!sendTransport) {
@@ -50,9 +48,7 @@ async function startSpeaking() {
       return;
     }
 
-    alert("send transport found");
-
-    // 2. Request microphone access
+    //Request microphone access
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: false
@@ -61,14 +57,8 @@ async function startSpeaking() {
     localStreamRef.current = stream;
     
 
-    // 3. Get the microphone audio track
+    //Get the microphone audio track
     const audioTrack = stream.getAudioTracks()[0];
-
-    alert(JSON.stringify({
-  enabled: audioTrack.enabled,
-  muted: audioTrack.muted,
-  readyState: audioTrack.readyState
-}));
 
 
     if (!audioTrack) {
@@ -76,19 +66,12 @@ async function startSpeaking() {
       return;
     }
 
-    alert("audio track found");
-    // 4. Create the producer
-   alert("Before sendTransport.produce");
+    //Create the producer
     const producer = await sendTransport.produce({
       track: audioTrack
     });
-    alert("After sendTransport.produce");
 
     audioProducerRef.current = producer;
-
-    alert("Audio producer created:", producer.id);
-    alert("Your microphone audio producer is ready!");
-
   } catch (error) {
     console.error("Failed to start speaking:", error);
     alert("Could not start speaking: " + error.message);
@@ -174,13 +157,19 @@ ws.send(JSON.stringify({
 
     recvTransportRef.current = recvTransport;
 
-    alert("Receive transport created");
+  alert("INITIAL STATE: " + recvTransport.connectionState);
+
+recvTransport.on("connectionstatechange", (state) => {
+  alert("RECEIVE TRANSPORT STATE CHANGED: " + state);
+});
+
+alert("LISTENER REGISTERED");
+  
 
     recvTransport.on(
       "connect",
       ({ dtlsParameters }, callback, errback) => {
-        alert("Receive transport connect event fired");
-
+        alert("RECV TRANSPORT CONNECT EVENT FIRED");
         // Save the callbacks for the response handler.
         connectCallbackRef.current = callback;
         connectErrbackRef.current = errback;
@@ -207,11 +196,15 @@ ws.send(JSON.stringify({
 
   sendTransportRef.current = sendTransport;
 
+sendTransport.on("connectionstatechange", (state) => {
+  alert("SEND TRANSPORT STATE: " + state);
+});
+
+
   //Connect the send transport
   sendTransport.on(
     "connect",
     ({ dtlsParameters }, callback, errback) => {
-     alert("SEND CONNECT EVENT FIRED");
       ws.send(JSON.stringify({
         type: "connectTransport",
         roomId,
@@ -243,7 +236,6 @@ ws.send(JSON.stringify({
     }
   );
 
-  alert("Send transport created");
 }
   
 
@@ -251,7 +243,15 @@ ws.send(JSON.stringify({
 
 
 if (data.type === "transportConnected") {
-  alert("connect transport res");
+
+
+  alert(JSON.stringify({
+    transportId: data.transportId,
+    successful: data.successful,
+    error: data.error
+  }));
+
+
   const isSendTransport =
     data.transportId === sendTransportRef.current?.id;
 
@@ -264,7 +264,11 @@ if (data.type === "transportConnected") {
     : connectErrbackRef;
 
   if (data.successful) {
-    alert("Transport connected successfully");
+    alert(
+      isSendTransport
+        ? "SEND TRANSPORT CONNECTED"
+        : "RECEIVE TRANSPORT CONNECTED"
+    );
     callbackRef.current?.();
   } else {
     errbackRef.current?.(
@@ -326,13 +330,17 @@ if (data.type === "newProducer") {
     rtpCapabilities: device.rtpCapabilities
   }));
 
-  alert("Consume request sent:", data.producerId);
 }
 
 
 
+
+
+
+
+
+
 if (data.type === "consumerCreated") {
-  alert("Consumer created response:", data);
 
   if (!data.successful) {
     console.error("Consumer creation failed:", data.message);
@@ -359,19 +367,24 @@ if (data.type === "consumerCreated") {
 
 
       consumer.track.onunmute = () => {
-  alert("INCOMING AUDIO TRACK UNMUTED");
-};
+         alert("INCOMING AUDIO TRACK UNMUTED");
+       };
 
-consumer.track.onmute = () => {
-  alert("INCOMING AUDIO TRACK MUTED");
-};
+      consumer.track.onmute = () => {
+        alert("INCOMING AUDIO TRACK MUTED");
+       };
 
 alert(JSON.stringify({
-  kind: consumer.track.kind,
-  enabled: consumer.track.enabled,
-  muted: consumer.track.muted,
-  readyState: consumer.track.readyState
-}));
+  id: consumer.id,
+  kind: consumer.kind,
+  trackKind: consumer.track.kind,
+  trackMuted: consumer.track.muted,
+  trackEnabled: consumer.track.enabled,
+  trackReadyState: consumer.track.readyState,
+  paused: consumer.paused,
+  transportConnectionState: recvTransport.connectionState
+})
+);
       alert("Local consumer created:", consumer.id);
 
       // Attach the incoming audio track.
@@ -396,7 +409,7 @@ alert(JSON.stringify({
         await audio.play();
         alert("Incoming audio playback started");
       } catch (error) {
-        console.warn(
+        alert(
           "Browser blocked audio playback. Tap the page and try again.",
           error
         );

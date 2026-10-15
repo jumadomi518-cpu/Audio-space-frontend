@@ -16,7 +16,7 @@
       await navigator.share({
         title: "ROOM LINK",
         text: "Click the link to join room:",
-        url: `http://64.227.45.0:3000/full-name/${roomId}`
+        url: `https://audio.domtech.co.ke/full-name/${roomId}`
       });
     } else {
       await navigator.clipboard.writeText(roomLink);
