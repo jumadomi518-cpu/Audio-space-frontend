@@ -1,0 +1,32 @@
+
+ .joinRoom main {
+    min-width: 100dvw;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+  }
+
+.joinRoom main div {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.joinRoom button {
+   font-size: 1.5rem;
+   padding: 0.5em;
+   border-radius: 8px;
+ }
+
+ .joinRoom button:first-child {
+   color: white;
+   background-color: green;
+   border: none;  
+ }
+
+ .joinRoom button:last-child {
+   color: green;
+   background-color: white;
+   border: 1px solid green;
+ }
+

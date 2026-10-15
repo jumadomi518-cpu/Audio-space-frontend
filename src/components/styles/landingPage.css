@@ -1,0 +1,25 @@
+
+ .landingPage header h1 {
+   text-align: center;
+   font-size: 2rem;
+   padding: 2em;
+  }
+
+ .landingPage main {
+   margin-top: 2rem;
+  }
+
+ .landingPage main div {
+   width: 100%;
+   display: flex;
+   justify-content: center;
+ }
+
+ .landingPage main button {
+   font-size: 1.5rem;
+   padding: 0.5em;
+   color: white;
+   background-color: green;
+   border-radius: 8px;
+   border: none;
+ }

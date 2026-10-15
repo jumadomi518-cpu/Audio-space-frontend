@@ -1,0 +1,41 @@
+
+ .nameForm main {
+   width: 100dvw;
+   height: 100dvh;
+   display: grid;
+   place-items: center;
+  }
+
+ .nameForm main form {
+   width: 50%;
+   display: flex;
+   flex-direction: column;
+ }
+
+.nameForm main form label {
+  font-size: 1.3rem;
+  font-family: Arial, sans-serif;
+}
+
+ .nameForm main form input {
+   font-size: 1.3rem;
+   padding: 0.3em;
+   border-radius: 0.2em;
+   border: 1px solid purple;
+ }
+
+ .nameForm main form input:focus {
+   outline: none;
+   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+ }
+
+ .nameForm main form button {
+   font-size: 1.3rem;
+   padding: 0.5em;
+   color: white;
+   background-color: green;
+   border-radius: 8px;
+   border: none;
+   margin-top: 2em;
+ }
+
