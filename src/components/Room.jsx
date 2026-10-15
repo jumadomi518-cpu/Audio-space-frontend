@@ -18,7 +18,7 @@ import { device } from "../utils//mediasoup.js";
  
  const participantId = localStorage.getItem("participantId");
  
- let ws = new WebSocket("ws://api.domtech.co.ke⁠");
+ let ws = new WebSocket("wss://api.domtech.co.ke⁠");
  let retryTimer;
 
  const sendTransportRef = useRef(null);
