@@ -12,6 +12,11 @@ import { Spinner } from "./Spinner.jsx"
   
  const [ muted, setMuted ] = useState(true);
  const [ handRaised, setHandRaised ] = useState(false);
+ const [ micDisabled, setMicDisabled ] = useState(false);
+ const [ handDisabled, setHandDisabled ] = useState(false);
+ const [ loading, setLoading ] = useState(false);
+ const [ roomAction, setRoomAction ] = useState("loading...");
+
  const [ participants, setParticipants ] = useState([]);
  const [ participantInfo, setParticipantInfo ] = useState({});
  const [ hostId, setHostId ] = useState(null);
@@ -398,6 +403,12 @@ if (data.type === "consumerCreated") {
 
 
     if (data.type === "microphone-update") {
+
+      if (participantId === data?.participantId) {
+        setMuted(data.status === "muted");
+      }
+
+
       setParticipants((prev) =>
         prev.map((p) =>
           p?.id === data.participantId
@@ -408,6 +419,11 @@ if (data.type === "consumerCreated") {
     }
 
     if (data.type === "hand-update") {
+      
+      if (participantId === data?.participantId) {
+         setHandRaised(data.status === "raised");
+      }
+
       setParticipants((prev) =>
         prev.map((p) =>
           p?.id === data.participantId
@@ -439,18 +455,28 @@ function sendStatus(type, status) {
 
 
  
- function handleMicrophone() {
-  const status = muted ? "unmuted" : "muted";
-   startSpeaking();
-  sendStatus("microphone", status);
-  setMuted(!muted);
- }
+function handleMicrophone() {
+  const producer = audioProducerRef.current;
+
+  if (!producer) {
+    startSpeaking();
+  }
+
+  if (muted) {
+    producer.resume();
+    sendStatus("microphone", "unmuted");
+  } else {
+    producer.pause();
+    sendStatus("microphone", "muted");
+  }
+
+
+}
 
 
 function handleRaiseHand() {
   const status = handRaised ? "lowered" : "raised";
   sendStatus("hand", status);
-  setHandRaised(!handRaised);
 }
 
 
@@ -524,8 +550,14 @@ useEffect(() => {
       </div>
      </main>
      <footer>
+      {loading && (
+      <div className="action">
+      <p>{roomAction}</p>
+       </div>)}
        <div>
-         <button onClick={handleMicrophone}>
+         <button 
+           onClick={handleMicrophone} 
+           disabled={micDisabled}>
           {!muted ? (
           <FontAwesomeIcon
             icon={faMicrophone}

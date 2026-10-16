@@ -84,6 +84,24 @@
   background-color: white;
 }
 
+.room footer .action {
+  width: 100%;
+  position: fixed;
+  bottom: 0;
+  background-color: white;
+  dispay: flex;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.room footer .action p {
+  background-color: green;
+  color: white;
+  font-size: 14px;
+  padding: 10px;
+  border-radius: 5px;
+}
+
 .room footer div {
   display: flex;
   gap: 40px;
@@ -94,6 +112,10 @@
   font-size: 0.7rem;
   border-radius: 0.3em;
   padding: 0.5em;
+}
+
+.room footer div button:active {
+  background-color: green;
 }
 
 .room footer div button:last-child {
