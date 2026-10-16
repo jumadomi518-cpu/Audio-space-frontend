@@ -2,7 +2,8 @@
 import "./styles/nameForm.css";
 import { useNavigate, useParams } from "react-router";
 import { useState } from "react";
-import { device } from "../utils//mediasoup.js";
+import { createDevice } from "../utils/mediasoup.js";
+
 
 export function NameForm() {
  
@@ -12,6 +13,7 @@ export function NameForm() {
  const [ btnText, setBtnText ] = useState("Enter Room");
  const [ btnDisabled, setBtnDisaled ] = useState(false);
 
+ const newDevice = createDevice();
 
  
 async function handleEnterRoom(e) {
@@ -43,11 +45,9 @@ async function handleEnterRoom(e) {
     localStorage.setItem("participantId", data.participantId);
     localStorage.removeItem("isHost");
 
-   if (!device.loaded) {
-    await device.load({
+    await newDevice.load({
      routerRtpCapabilities: data.rtpCapabilities
-    });    
-   }
+   });
 
     navigate(`/room/${roomId}`, { replace: true });
 
