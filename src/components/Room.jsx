@@ -93,7 +93,7 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    alert("WebSocket disconnected. Retrying...");
+    alert("Internet disconnected.Connection  Retrying...");
 
     retryTimer = setTimeout(() => {
       connectWebSocket();
@@ -279,8 +279,6 @@ if (data.type === "producerCreated") {
 
 
 if (data.type === "newProducer") {
-  console.log("New producer received:", data);
-
   if (data.participantId === participantId) {
     return;
   }
@@ -366,7 +364,6 @@ if (data.type === "consumerCreated") {
       // Attempt to play the incoming audio.
       try {
         await audio.play();
-        alert("Incoming audio playback started");
       } catch (error) {
         alert(
           "Browser blocked audio playback. Tap the page and try again.",
