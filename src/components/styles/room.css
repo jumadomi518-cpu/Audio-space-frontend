@@ -4,6 +4,23 @@
   padding: 0;
  }
 
+
+.room .overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 1000;
+ }
+
+.overlay .spinnerContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 1rem;
+ }
+
  .room main {
    display: flex;
    width: 100%;

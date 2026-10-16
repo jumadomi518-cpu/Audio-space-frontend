@@ -43,13 +43,13 @@ async function handleEnterRoom(e) {
     localStorage.setItem("participantId", data.participantId);
     localStorage.removeItem("isHost");
 
-
+   if (!device.loaded) {
     await device.load({
      routerRtpCapabilities: data.rtpCapabilities
-   });    
+    });    
+   }
 
-
-    navigate(`/room/${roomId}`);
+    navigate(`/room/${roomId}`, { replace: true });
 
   } catch (err) {
     alert(err.message);

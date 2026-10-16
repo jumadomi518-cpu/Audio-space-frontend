@@ -6,6 +6,7 @@ import { faMicrophone, faVideo, faArrowRight, faMicrophoneSlash, faHand } from "
 import { faHand as faHandRegular } from "@fortawesome/free-regular-svg-icons";
 import "./styles/room.css"
 import { device } from "../utils//mediasoup.js";
+import { Spinner } from "./Spinner.jsx"
 
  export function Room() {
   
@@ -15,6 +16,9 @@ import { device } from "../utils//mediasoup.js";
  const [ participantInfo, setParticipantInfo ] = useState({});
  const [ hostId, setHostId ] = useState(null);
  const { roomId } = useParams();
+ const [ loadingRoom, setLoadingRoom ] = useState(true);
+ const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
+
  
  const participantId = localStorage.getItem("participantId");
  
@@ -85,6 +89,7 @@ useEffect(() => {
 function connectWebSocket() {
 
   ws.onopen = () => {
+    setSpinnerInfo("Setting up Room");
     ws.send(JSON.stringify({
       type: "register",
       participantId: participantId,
@@ -137,6 +142,8 @@ ws.send(JSON.stringify({
       setParticipantInfo(user);
       const host = data.participants.find(p => p.isHost === true);
       setHostId(host?.id);
+      setSpinnerInfo("Your Room is ready");
+      setLoadingRoom(false);
     }
 
 
@@ -467,9 +474,16 @@ useEffect(() => {
 
   return (
    <div className="room">
+    {loadingRoom && (
+     <div className="overlay">
+       <div className="spinnerContainer">
+         <Spinner />
+          <p>{spinnerInfo}</p>
+       </div>
+     </div>)}
      <main>
       <div className="participants">
-        <h3>Participants: <span style={{ color: "green" }}>{participants.length}</span></h3>
+        <h3>Participants: <span style={{ color: "green" }}>{participants.length > 0 ? participants.length : "..."}</span></h3>
         <hr />
         {participants.map((p, index) => {
 
