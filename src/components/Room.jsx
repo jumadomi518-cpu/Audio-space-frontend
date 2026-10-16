@@ -140,7 +140,10 @@ ws.send(JSON.stringify({
     }
 
 
-
+    if (data.type === "new-participant") {
+      setParticipants((prev) => [data?.participant, ...prev]);
+      alert("new person joined");
+    }
 
 
 
@@ -155,22 +158,14 @@ ws.send(JSON.stringify({
       dtlsParameters: data.dtlsParameters
     });
 
-    recvTransportRef.current = recvTransport;
-
-  alert("INITIAL STATE: " + recvTransport.connectionState);
-
-recvTransport.on("connectionstatechange", (state) => {
-  alert("RECEIVE TRANSPORT STATE CHANGED: " + state);
-});
-
-alert("LISTENER REGISTERED");
+    recvTransportRef.current = recvTransport
   
 
     recvTransport.on(
       "connect",
       ({ dtlsParameters }, callback, errback) => {
-        alert("RECV TRANSPORT CONNECT EVENT FIRED");
-        // Save the callbacks for the response handler.
+      
+        
         connectCallbackRef.current = callback;
         connectErrbackRef.current = errback;
 
@@ -195,10 +190,6 @@ alert("LISTENER REGISTERED");
   });
 
   sendTransportRef.current = sendTransport;
-
-sendTransport.on("connectionstatechange", (state) => {
-  alert("SEND TRANSPORT STATE: " + state);
-});
 
 
   //Connect the send transport
@@ -244,14 +235,6 @@ sendTransport.on("connectionstatechange", (state) => {
 
 if (data.type === "transportConnected") {
 
-
-  alert(JSON.stringify({
-    transportId: data.transportId,
-    successful: data.successful,
-    error: data.error
-  }));
-
-
   const isSendTransport =
     data.transportId === sendTransportRef.current?.id;
 
@@ -264,11 +247,6 @@ if (data.type === "transportConnected") {
     : connectErrbackRef;
 
   if (data.successful) {
-    alert(
-      isSendTransport
-        ? "SEND TRANSPORT CONNECTED"
-        : "RECEIVE TRANSPORT CONNECTED"
-    );
     callbackRef.current?.();
   } else {
     errbackRef.current?.(
@@ -303,9 +281,9 @@ if (data.type === "producerCreated") {
 if (data.type === "newProducer") {
   console.log("New producer received:", data);
 
-  /*if (data.participantId === participantId) {
+  if (data.participantId === participantId) {
     return;
-  }*/
+  }
 
   if (data.kind !== "audio") {
     return;
@@ -366,26 +344,7 @@ if (data.type === "consumerCreated") {
       consumersRef.current.set(consumer.id, consumer);
 
 
-      consumer.track.onunmute = () => {
-         alert("INCOMING AUDIO TRACK UNMUTED");
-       };
-
-      consumer.track.onmute = () => {
-        alert("INCOMING AUDIO TRACK MUTED");
-       };
-
-alert(JSON.stringify({
-  id: consumer.id,
-  kind: consumer.kind,
-  trackKind: consumer.track.kind,
-  trackMuted: consumer.track.muted,
-  trackEnabled: consumer.track.enabled,
-  trackReadyState: consumer.track.readyState,
-  paused: consumer.paused,
-  transportConnectionState: recvTransport.connectionState
-})
-);
-      alert("Local consumer created:", consumer.id);
+     
 
       // Attach the incoming audio track.
       const stream = new MediaStream([consumer.track]);
