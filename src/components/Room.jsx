@@ -549,7 +549,7 @@ function handleLeaveRoom() {
       roomId: roomId,
       type: "leave-room"
     }));
- navigate(`/full-name/{roomId}`, { replace: true });
+ navigate(`/full-name/${roomId}`, { replace: true });
 }
 
 
