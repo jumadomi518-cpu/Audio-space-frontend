@@ -174,7 +174,6 @@ ws.send(JSON.stringify({
 
     if (data.type === "new-participant") {
       setParticipants((prev) => [data?.participant, ...prev]);
-      alert("new person joined");
     }
 
 
