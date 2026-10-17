@@ -7,6 +7,8 @@ import { faHand as faHandRegular } from "@fortawesome/free-regular-svg-icons";
 import "./styles/room.css"
 import { device } from "../utils//mediasoup.js";
 import { Spinner } from "./Spinner.jsx"
+import Whiteboard from "../components/Whiteboard";
+
 
  export function Room() {
   
@@ -619,7 +621,12 @@ useEffect(() => {
       <div className="board">
         <h3>Digital Board</h3>
         <hr />
-
+        <Whiteboard
+          ws={ws}
+          roomId={roomId}
+          participantId={participantId}
+          canDraw={true}
+        />
       </div>
      </main>
      <footer>
