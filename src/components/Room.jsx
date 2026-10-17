@@ -24,6 +24,7 @@ import { Spinner } from "./Spinner.jsx"
  const [ loadingRoom, setLoadingRoom ] = useState(true);
  const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
 
+ const navigate = useNavigate();
  
  const participantId = localStorage.getItem("participantId");
  
@@ -50,6 +51,13 @@ import { Spinner } from "./Spinner.jsx"
 
 async function startSpeaking() {
   try {
+
+
+     if (audioProducerRef.current &&
+        !audioProducerRef.current.closed) {
+      return audioProducerRef.current;
+    }
+
     const sendTransport = sendTransportRef.current;
 
     if (!sendTransport) {
@@ -58,10 +66,14 @@ async function startSpeaking() {
     }
 
     //Request microphone access
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: false
-    });
+ const stream = await navigator.mediaDevices.getUserMedia({
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
+  },
+  video: false
+});
 
     localStreamRef.current = stream;
     
@@ -81,9 +93,17 @@ async function startSpeaking() {
     });
 
     audioProducerRef.current = producer;
+
+    producer.on("transportclose", () => {
+      if (audioProducerRef.current === producer) {
+        audioProducerRef.current = null;
+      }
+    });
+
+    return producer;
   } catch (error) {
     console.error("Failed to start speaking:", error);
-    alert("Could not start speaking: " + error.message);
+    alert(error.message);
   }
 }
 
@@ -402,12 +422,21 @@ if (data.type === "consumerCreated") {
 }
 
 
+if (data.type === "participantLeft") {
+  setParticipants((prev) =>
+    prev.filter((p) => p.id !== data.participantId)
+  );
+}
+
+
+
     if (data.type === "microphone-update") {
 
       if (participantId === data?.participantId) {
         setMuted(data.status === "muted");
       }
 
+     
 
       setParticipants((prev) =>
         prev.map((p) =>
@@ -424,14 +453,21 @@ if (data.type === "consumerCreated") {
          setHandRaised(data.status === "raised");
       }
 
-      setParticipants((prev) =>
-        prev.map((p) =>
-          p?.id === data.participantId
-            ? { ...p, hand: data.status }
-            : p
-        )
-      );
-    }
+  setParticipants((prev) =>
+  prev
+    .map((p) =>
+      p?.id === data.participantId
+        ? { ...p, hand: data.status }
+        : p
+    )
+    .sort((a, b) =>
+      (b.hand === "raised" ? 1 : 0) -
+      (a.hand === "raised" ? 1 : 0)
+    )
+  );
+ }
+
+
   };
 }
 
@@ -454,29 +490,66 @@ function sendStatus(type, status) {
 }
 
 
- 
-function handleMicrophone() {
-  const producer = audioProducerRef.current;
+async function handleMicrophone() {
+  try {
+    let producer = audioProducerRef.current;
 
-  if (!producer) {
-    startSpeaking();
+    if (muted) {
+      // Create the producer if it doesn't exist
+      if (!producer || producer.closed) {
+        producer = await startSpeaking();
+      }
+
+      if (!producer) {
+       return;
+      }
+
+
+      // Resume audio locally
+      await producer.resume();
+
+      // Update the UI after local success
+      // setMuted(false);
+
+      // Notify backend
+      sendStatus("microphone", "unmuted");
+
+    } else {
+      if (producer && !producer.closed) {
+        await producer.pause();
+      }
+
+      setMuted(true);
+
+      sendStatus("microphone", "muted");
+    }
+
+  } catch (error) {
+    console.error("Microphone toggle failed:", error);
+
+    alert(error.message);
   }
-
-  if (muted) {
-    producer.resume();
-    sendStatus("microphone", "unmuted");
-  } else {
-    producer.pause();
-    sendStatus("microphone", "muted");
-  }
-
-
 }
 
 
 function handleRaiseHand() {
   const status = handRaised ? "lowered" : "raised";
   sendStatus("hand", status);
+}
+
+function handleLeaveRoom() {
+ const con = confirm("Are you sure you want to leave");
+
+ if (!con) {
+  return;
+ }
+
+ ws.send(JSON.stringify({
+      participantId: participantId,
+      roomId: roomId,
+      type: "leave-room"
+    }));
+ navigate(`/full-name/{roomId}`, { replace: true });
 }
 
 
@@ -528,6 +601,7 @@ useEffect(() => {
                ) : ( 
                <FontAwesomeIcon
                  icon={faHand}
+                 size="1.5"
                  color="white"
                 />
                )}
@@ -587,7 +661,7 @@ useEffect(() => {
           />
           )}
          </button>
-         <button>
+         <button onClick={handleLeaveRoom}>
           <FontAwesomeIcon
             icon={faArrowRight}
             size="2x"
