@@ -497,7 +497,6 @@ export default function Whiteboard({
 
   useEffect(() => {
     if (!ws) {
-     alert("No connection");
      return
     };
 

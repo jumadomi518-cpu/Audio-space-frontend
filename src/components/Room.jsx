@@ -31,13 +31,8 @@ import Whiteboard from "../components/Whiteboard";
  const participantId = localStorage.getItem("participantId");
  
  const wsRef = useRef(null);
-const retryTimerRef = useRef(null);
+ const retryTimerRef = useRef(null);
 
- if (!wsRef.current) {
-   wsRef.current = new WebSocket("wss://api.domtech.co.ke");
- }
-
- const ws = wsRef.current;
 
  const sendTransportRef = useRef(null);
  const recvTransportRef = useRef(null);
@@ -55,6 +50,58 @@ const retryTimerRef = useRef(null);
  const deviceRef = useRef(null);
  const consumersRef = useRef(new Map());
  const audioElementsRef = useRef(new Map());
+
+
+ const audioContextRef = useRef(null);
+ const speakingRef = useRef(false);
+ const animationFrameRef = useRef(null);
+
+
+function detectSpeaking(stream) {
+  const audioContext = new AudioContext();
+  audioContextRef.current = audioContext;
+
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
+
+  analyser.fftSize = 512;
+  source.connect(analyser);
+
+  const data = new Uint8Array(analyser.fftSize);
+
+  function checkVolume() {
+    analyser.getByteTimeDomainData(data);
+
+    let sum = 0;
+
+    for (const value of data) {
+      const normalized = (value - 128) / 128;
+      sum += normalized * normalized;
+    }
+
+    const volume = Math.sqrt(sum / data.length);
+    const isSpeaking = volume > 0.04;
+
+    if (isSpeaking !== speakingRef.current) {
+      speakingRef.current = isSpeaking;
+
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: "speaking-update",
+          roomId,
+          participantId,
+          speaking: isSpeaking
+        }));
+      }
+    }
+
+    animationFrameRef.current =
+      requestAnimationFrame(checkVolume);
+  }
+
+  checkVolume();
+}
+
 
 
 async function startSpeaking() {
@@ -84,8 +131,9 @@ async function startSpeaking() {
 });
 
     localStreamRef.current = stream;
-    
-
+  
+     detectSpeaking(stream);  
+  
     //Get the microphone audio track
     const audioTrack = stream.getAudioTracks()[0];
 
@@ -121,6 +169,11 @@ useEffect(() => {
 
 function connectWebSocket() {
 
+  const ws = new WebSocket("wss://api.domtech.co.ke");
+
+  wsRef.current = ws;
+
+
   ws.onopen = () => {
     setSpinnerInfo("Setting up Room");
     ws.send(JSON.stringify({
@@ -131,7 +184,7 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    alert("Internet disconnected.Connection  Retrying...");
+    alert("Internet disconnected. Retrying to connect...");
 
     retryTimer = setTimeout(() => {
       connectWebSocket();
@@ -485,6 +538,20 @@ if (data.type === "microphone-update") {
  }
 
 
+if (data.type === "speaking-update") {
+  setParticipants(prev =>
+    prev.map(participant =>
+      participant.id === data.participantId
+        ? {
+            ...participant,
+            speaking: data.speaking
+          }
+        : participant
+    )
+  );
+}
+
+
   };
 }
 
@@ -493,6 +560,9 @@ connectWebSocket();
 }, [roomId])
 
 function sendStatus(type, status) {
+
+  const ws = wsRef.current;
+
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       participantId: participantId,
@@ -555,6 +625,7 @@ function handleRaiseHand() {
 }
 
 function handleLeaveRoom() {
+ const ws = wsRef.current;
  const con = confirm("Are you sure you want to leave");
 
  if (!con) {
@@ -612,7 +683,7 @@ useEffect(() => {
 
          return (
           <div className="userInfo" key={index}>
-            <div>
+            <div className={p?.speaking ? "speakingIndicator" : ""}>
               {p.hand === "lowered" ? (
                <span><b>{initials || ""}</b></span>
                ) : ( 
@@ -638,7 +709,7 @@ useEffect(() => {
         <h3>Digital Board</h3>
         <hr />
         <Whiteboard
-          ws={ws}
+          ws={wsRef.current}
           roomId={roomId}
           participantId={participantId}
           canDraw={true}
