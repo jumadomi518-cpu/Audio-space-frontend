@@ -30,8 +30,14 @@ import Whiteboard from "../components/Whiteboard";
  
  const participantId = localStorage.getItem("participantId");
  
- let ws = new WebSocket("wss://api.domtech.co.ke⁠");
- let retryTimer;
+ const wsRef = useRef(null);
+const retryTimerRef = useRef(null);
+
+ if (!wsRef.current) {
+   wsRef.current = new WebSocket("wss://api.domtech.co.ke");
+ }
+
+ const ws = wsRef.current;
 
  const sendTransportRef = useRef(null);
  const recvTransportRef = useRef(null);
@@ -431,22 +437,32 @@ if (data.type === "participantLeft") {
 
 
 
-    if (data.type === "microphone-update") {
+if (data.type === "microphone-update") {
 
-      if (participantId === data?.participantId) {
-        setMuted(data.status === "muted");
-      }
+  if (participantId === data?.participantId) {
+    setMuted(data.status === "muted");
+  }
 
-     
+  setParticipants((prev) =>
+    prev
+      .map((p) =>
+        p?.id === data.participantId
+          ? { ...p, microphone: data.status }
+          : p
+      )
+      .sort((a, b) => {
+        if (a.microphone === "unmuted" && b.microphone !== "unmuted") {
+          return -1;
+        }
 
-      setParticipants((prev) =>
-        prev.map((p) =>
-          p?.id === data.participantId
-            ? { ...p, microphone: data.status }
-            : p
-        )
-      );
-    }
+        if (a.microphone !== "unmuted" && b.microphone === "unmuted") {
+          return 1;
+        }
+
+        return 0;
+      })
+  );
+}
 
     if (data.type === "hand-update") {
       

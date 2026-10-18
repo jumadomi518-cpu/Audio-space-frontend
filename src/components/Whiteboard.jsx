@@ -105,7 +105,7 @@ export default function Whiteboard({
   ws,
   roomId,
   participantId,
-  canDraw = false
+  canDraw = true
 }) {
   const canvasRef = useRef(null);
   const scrollRef = useRef(null);
@@ -496,24 +496,26 @@ export default function Whiteboard({
   }
 
   useEffect(() => {
-    if (!ws) return;
+    if (!ws) {
+     alert("No connection");
+     return
+    };
 
     function handleMessage(event) {
+
       let data;
 
       try {
         data = JSON.parse(event.data);
-      } catch {
+      } catch (err) {
+        alert(err.message);
         return;
       }
 
-      if (
-        data.type !== "whiteboard" ||
-        data.roomId !== roomId ||
-        data.participantId === participantId
-      ) {
+      if (data.type !== "whiteboard") {
         return;
       }
+
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -550,6 +552,9 @@ export default function Whiteboard({
         strokeMapRef.current.set(id, stroke);
 
         redrawBoard();
+
+
+
         return;
       }
 
