@@ -187,9 +187,7 @@ useEffect(() => {
 
 
 
-// -----------------------------------------------
 // WebSocket sender: protocol preserved
-// -----------------------------------------------
 
 const send = useCallback(
 (message) => {
@@ -215,36 +213,10 @@ return false;
 
 );
 
-// -----------------------------------------------
+
 // Coordinates remain global to the entire board.
 // The scroll offset is included, so the correct
 // section is selected even after scrolling.
-// -----------------------------------------------
-
-/*const getPoint = useCallback((event) => {
-const firstCanvas = canvasRefs.current.get(0);
-const scroll = scrollRef.current;
-
-if (!firstCanvas || !scroll) return null;
-
-const rect = firstCanvas.getBoundingClientRect();
-
-if (!rect.width) return null;
-
-return {
-  x: (event.clientX - rect.left) / rect.width,
-  y: (
-    event.clientY -
-    rect.top +
-    scroll.scrollTop
-  ) / rect.width,
-  pressure:
-    event.pressure > 0
-      ? event.pressure
-      : 0.5
-};
-
-}, []);*/
 
 const getPoint = useCallback((event) => {
   const canvas = event.currentTarget;
@@ -275,12 +247,10 @@ const getPoint = useCallback((event) => {
 }, []);
 
 
-// -----------------------------------------------
 // Render one stroke onto one section.
 // Points use global board coordinates.
 // Canvas clipping handles strokes crossing
 // section boundaries.
-// -----------------------------------------------
 
 const renderStroke = useCallback(
 (stroke, sectionIndex) => {
@@ -369,11 +339,8 @@ const canvas = canvasRefs.current.get(sectionIndex);
 
 );
 
-// -----------------------------------------------
 // Redraw only the requested sections.
-// No need to clear the entire 20,000px board
 // on every pointer movement.
-// -----------------------------------------------
 
 const redrawSection = useCallback(
 (sectionIndex) => {
@@ -436,9 +403,7 @@ dirtySectionsRef.current.add(index);
 
 );
 
-// -----------------------------------------------
 // Eraser
-// -----------------------------------------------
 
 const applyEraser = useCallback(
 (eraserPoints, widthRatio) => {
@@ -496,9 +461,7 @@ if (!eraserPoints.length) return;
 
 );
 
-// -----------------------------------------------
 // Send accumulated points
-// -----------------------------------------------
 
 const flushPoints = useCallback(() => {
 const active = activeStrokeRef.current;
@@ -545,9 +508,7 @@ return () => clearInterval(timer);
 
 }, [flushPoints]);
 
-// -----------------------------------------------
 // Finish drawing
-// -----------------------------------------------
 
 const handlePointerUp = useCallback(
 (event) => {
@@ -608,9 +569,7 @@ return () => {
 
 }, [handlePointerUp]);
 
-// -----------------------------------------------
 // Start drawing
-// -----------------------------------------------
 
 const handlePointerDown = useCallback(
 (event) => {
@@ -682,9 +641,7 @@ return;
 
 );
 
-// -----------------------------------------------
 // Continue drawing
-// -----------------------------------------------
 
 const handlePointerMove = useCallback(
 (event) => {
@@ -739,11 +696,9 @@ return;
 
 );
 
-// -----------------------------------------------
 // Receive remote participants' strokes.
 // Incoming points use the same global coordinate
 // system, so they render in the correct section.
-// -----------------------------------------------
 
 useEffect(() => {
 
@@ -766,7 +721,6 @@ function handleMessage(event) {
   }
 
   if (data.action === "clear") {
-    alert("clear")
     strokesRef.current = [];
     strokeMapRef.current.clear();
 
@@ -775,7 +729,6 @@ function handleMessage(event) {
   }
 
   if (data.action === "erase") {
-    alert("erase")
     applyEraser(
       data.points || [],
       data.widthRatio || ERASER_WIDTH_RATIO
@@ -809,7 +762,6 @@ function handleMessage(event) {
   }
 
   if (data.action === "points") {
-    alert("points")
     let stroke = strokeMapRef.current.get(id);
 
     if (!stroke) {
@@ -857,9 +809,7 @@ applyEraser,
 scheduleRedraw
 ]);
 
-// -----------------------------------------------
 // Toolbar
-// -----------------------------------------------
 
 const updateMode = useCallback((next) => {
 if (next === modeRef.current) return;
@@ -910,9 +860,7 @@ send({ action: "clear" });
 
 }, [canDraw, scheduleRedraw, send]);
 
-// -----------------------------------------------
 // Cleanup
-// -----------------------------------------------
 
 useEffect(() => {
 return () => {
@@ -922,52 +870,12 @@ cancelAnimationFrame(animationRef.current);
 };
 }, []);
 
-// -----------------------------------------------
 // UI
-// -----------------------------------------------
 
 return (
 <div className="whiteboard-app">
-<div
-className="whiteboard-scroll"
-ref={scrollRef}
->
-<div className="whiteboard-board">
-{Array.from(
-{ length: SECTION_COUNT },
-(_, index) => (
-<canvas
-key={index}
-data-section={index}
-ref={(element) => {
-if (element) {
-canvasRefs.current.set(index, element);
-} else {
-canvasRefs.current.delete(index);
-}
-}}
-width={BOARD_WIDTH}
-height={SECTION_HEIGHT}
-className="whiteboard-canvas"
-style={{
-borderLeft: "1px solid grey",
-touchAction:
-canDraw && mode === "draw"
-? "none"
-: "pan-y"
-}}
-onPointerDown={handlePointerDown}
-onPointerMove={handlePointerMove}
-onPointerUp={handlePointerUp}
-onPointerCancel={handlePointerUp}
-onLostPointerCapture={handlePointerUp}
-/>
-)
-)}
-</div>
-</div>
 
-  <div className="whiteboard-floating-toolbar">
+<div className="whiteboard-floating-toolbar">
     {canDraw ? (
       <>
         <div className="whiteboard-colors">
@@ -1038,6 +946,46 @@ onLostPointerCapture={handlePointerUp}
       <strong>Class whiteboard</strong>
     )}
   </div>
+
+
+<div
+className="whiteboard-scroll"
+ref={scrollRef}
+>
+<div className="whiteboard-board">
+{Array.from(
+{ length: SECTION_COUNT },
+(_, index) => (
+<canvas
+key={index}
+data-section={index}
+ref={(element) => {
+if (element) {
+canvasRefs.current.set(index, element);
+} else {
+canvasRefs.current.delete(index);
+}
+}}
+width={BOARD_WIDTH}
+height={SECTION_HEIGHT}
+className="whiteboard-canvas"
+style={{
+borderLeft: "1px solid grey",
+touchAction:
+canDraw && mode === "draw"
+? "none"
+: "pan-y"
+}}
+onPointerDown={handlePointerDown}
+onPointerMove={handlePointerMove}
+onPointerUp={handlePointerUp}
+onPointerCancel={handlePointerUp}
+onLostPointerCapture={handlePointerUp}
+/>
+)
+)}
+</div>
+</div>
 </div>
 
 );
