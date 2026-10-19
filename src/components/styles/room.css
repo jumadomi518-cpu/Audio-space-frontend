@@ -39,7 +39,6 @@
 
  .room main .participants {
   flex: 1;
-  border-right: 1px solid grey;
   height: 100%;
  }
 

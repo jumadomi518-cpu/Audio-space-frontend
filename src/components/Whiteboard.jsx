@@ -1,689 +1,1044 @@
-
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState
+useCallback,
+useEffect,
+useRef,
+useState
 } from "react";
 
+import { getStroke } from "perfect-freehand";
 import "./styles/whiteboard.css";
 
-const BOARD_WIDTH = 1000;
-const INITIAL_HEIGHT = 6000;
-const EXTEND_BY = 4000;
+let BOARD_WIDTH;
+const SECTION_HEIGHT = 500;
+const SECTION_COUNT = 200;
+const BOARD_HEIGHT = SECTION_HEIGHT * SECTION_COUNT;
 const SEND_INTERVAL = 25;
 
-// Thickness is proportional to canvas width.
-// At 1000 canvas units, the pen is 3 units wide.
 const PEN_WIDTH_RATIO = 0.003;
 const ERASER_WIDTH_RATIO = 0.035;
 
 const COLORS = [
-  "#111827",
-  "#dc2626",
-  "#2563eb",
-  "#16a34a",
-  "#9333ea",
-  "#ea580c"
+"#111827",
+"#dc2626",
+"#2563eb",
+"#16a34a",
+"#9333ea",
+"#ea580c"
 ];
 
-function createStroke(id, color, widthRatio, erase = false) {
-  return {
-    id,
-    color,
-    widthRatio,
-    erase,
-    points: [],
-    state: {
-      previous: null,
-      midpoint: null
-    }
-  };
+const STROKE_OPTIONS = {
+thinning: 0,
+smoothing: 0.5,
+streamline: 0.35,
+simulatePressure: false
+};
+
+function createStroke(
+id,
+color,
+widthRatio,
+erase = false
+) {
+return {
+id,
+color,
+widthRatio,
+erase,
+points: [],
+cachedOutline: null,
+isComplete: false
+};
 }
 
 function distanceToSegment(point, a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
+const dx = b.x - a.x;
+const dy = b.y - a.y;
 
-  if (dx === 0 && dy === 0) {
-    return Math.hypot(point.x - a.x, point.y - a.y);
-  }
+if (dx === 0 && dy === 0) {
+return Math.hypot(point.x - a.x, point.y - a.y);
+}
 
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((point.x - a.x) * dx + (point.y - a.y) * dy) /
-        (dx * dx + dy * dy)
-    )
-  );
+const t = Math.max(
+0,
+Math.min(
+1,
+(
+(point.x - a.x) * dx +
+(point.y - a.y) * dy
+) / (dx * dx + dy * dy)
+)
+);
 
-  const x = a.x + t * dx;
-  const y = a.y + t * dy;
-
-  return Math.hypot(point.x - x, point.y - y);
+return Math.hypot(
+point.x - (a.x + t * dx),
+point.y - (a.y + t * dy)
+);
 }
 
 function pathsIntersect(a, b, radius) {
-  if (!a.length || !b.length) return false;
+if (!a.length || !b.length) return false;
 
-  // Handle taps and single-point paths.
-  if (a.length === 1) {
-    for (let i = 0; i < b.length; i++) {
-      const start = b[i];
-      const end = b[i + 1] || start;
+for (let i = 0; i < a.length; i++) {
+const aStart = a[i];
+const aEnd = a[i + 1] || aStart;
 
-      if (distanceToSegment(a[0], start, end) <= radius) {
-        return true;
-      }
-    }
+for (let j = 0; j < b.length; j++) {
+  const bStart = b[j];
+  const bEnd = b[j + 1] || bStart;
+
+  if (
+    distanceToSegment(aStart, bStart, bEnd) <= radius ||
+    distanceToSegment(aEnd, bStart, bEnd) <= radius ||
+    distanceToSegment(bStart, aStart, aEnd) <= radius ||
+    distanceToSegment(bEnd, aStart, aEnd) <= radius
+  ) {
+    return true;
   }
+}
 
-  for (let i = 0; i < a.length; i++) {
-    const aStart = a[i];
-    const aEnd = a[i + 1] || aStart;
+}
 
-    for (let j = 0; j < b.length; j++) {
-      const bStart = b[j];
-      const bEnd = b[j + 1] || bStart;
+return false;
+}
 
-      if (
-        distanceToSegment(aStart, bStart, bEnd) <= radius ||
-        distanceToSegment(aEnd, bStart, bEnd) <= radius ||
-        distanceToSegment(bStart, aStart, aEnd) <= radius ||
-        distanceToSegment(bEnd, aStart, aEnd) <= radius
-      ) {
-        return true;
-      }
-    }
-  }
+function getStrokeSections(stroke) {
+if (!stroke.points.length) return [];
 
-  return false;
+const ys = stroke.points.map(
+(point) => point.y * BOARD_WIDTH
+);
+
+const padding =
+stroke.widthRatio * BOARD_WIDTH + 4;
+
+const minY = Math.max(0, Math.min(...ys) - padding);
+const maxY = Math.min(
+BOARD_HEIGHT,
+Math.max(...ys) + padding
+);
+
+const first = Math.max(
+0,
+Math.floor(minY / SECTION_HEIGHT)
+);
+
+const last = Math.min(
+SECTION_COUNT - 1,
+Math.floor(maxY / SECTION_HEIGHT)
+);
+
+const result = [];
+
+for (let i = first; i <= last; i++) {
+result.push(i);
+}
+
+return result;
 }
 
 export default function Whiteboard({
-  ws,
-  roomId,
-  participantId,
-  canDraw = true
+ws,
+roomId,
+participantId,
+canDraw = true
 }) {
-  const canvasRef = useRef(null);
-  const scrollRef = useRef(null);
+const scrollRef = useRef(null);
 
-  // Keep strokes as data so they can be erased and redrawn.
-  const strokesRef = useRef([]);
-  const strokeMapRef = useRef(new Map());
+// One canvas for each board section.
+const canvasRefs = useRef(new Map());
 
-  const activeStrokeRef = useRef(null);
-  const pendingRef = useRef([]);
-  const drawingRef = useRef(false);
-  const filterRef = useRef(null);
+const strokesRef = useRef([]);
+const strokeMapRef = useRef(new Map());
 
-  const colorRef = useRef(COLORS[0]);
-  const toolRef = useRef("pen");
-  const modeRef = useRef("draw");
+const activeStrokeRef = useRef(null);
+const pendingRef = useRef([]);
 
-  const [color, setColor] = useState(COLORS[0]);
-  const [tool, setTool] = useState("pen");
-  const [mode, setMode] = useState("draw");
+const drawingRef = useRef(false);
+const pointerIdRef = useRef(null);
 
-  const updateMode = (next) => {
-    modeRef.current = next;
-    setMode(next);
+const colorRef = useRef(COLORS[0]);
+const toolRef = useRef("pen");
+const modeRef = useRef("draw");
+
+const animationRef = useRef(null);
+const dirtySectionsRef = useRef(new Set());
+
+const finishStrokeRef = useRef(null);
+
+const [color, setColor] = useState(COLORS[0]);
+const [tool, setTool] = useState("pen");
+const [mode, setMode] = useState("draw");
+const [boardWidth, setBoardWidth] = useState(window.innerWidth);
+
+
+useEffect(() => {
+
+   BOARD_WIDTH = window.innerWidth;
+
+  const handleResize = () => {
+    BOARD_WIDTH = window.innerWidth;
+    setBoardWidth(window.innerWidth);
   };
 
-  const updateTool = (next) => {
-    toolRef.current = next;
-    setTool(next);
-    updateMode(next === "hand" ? "scroll" : "draw");
-  };
+  window.addEventListener("resize", handleResize);
 
-  const selectColor = (next) => {
-    colorRef.current = next;
-    setColor(next);
-    updateTool("pen");
-  };
+  return () => window.removeEventListener("resize", handleResize);
+}, []);
 
- 
-  //Preserves proportions as the canvas gets wider.
-  const getPoint = useCallback((event) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
 
-    return {
-      x: (event.clientX - rect.left) / rect.width,
-      y: (event.clientY - rect.top) / rect.width
-    };
-  }, []);
 
-  const filterPoint = useCallback((point) => {
-    const previous = filterRef.current;
+// -----------------------------------------------
+// WebSocket sender: protocol preserved
+// -----------------------------------------------
 
-    if (!previous) {
-      filterRef.current = point;
-      return point;
-    }
+const send = useCallback(
+(message) => {
+if (
+!ws ||
+ws.readyState !== WebSocket.OPEN
+) {
+return false;
+}
 
-    // Light smoothing to reduce touch jitter.
-    const amount = 0.72;
-
-    const result = {
-      x: previous.x + (point.x - previous.x) * amount,
-      y: previous.y + (point.y - previous.y) * amount
-    };
-
-    filterRef.current = result;
-    return result;
-  }, []);
-
-  const renderStroke = useCallback((stroke) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !stroke.points.length) return;
-
-    const ctx = canvas.getContext("2d");
-    const scale = canvas.width;
-    const width = stroke.widthRatio * scale;
-    const points = stroke.points;
-
-    ctx.save();
-
-    // Eraser strokes are applied to the stored drawing.
-    ctx.globalCompositeOperation = stroke.erase
-      ? "destination-out"
-      : "source-over";
-
-    ctx.strokeStyle = stroke.color;
-    ctx.fillStyle = stroke.color;
-    ctx.lineWidth = width;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    if (points.length === 1) {
-      ctx.beginPath();
-      ctx.arc(
-        points[0].x * scale,
-        points[0].y * scale,
-        width / 2,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(
-      points[0].x * scale,
-      points[0].y * scale
-    );
-
-    if (points.length === 2) {
-      ctx.lineTo(
-        points[1].x * scale,
-        points[1].y * scale
-      );
-    } else {
-      for (let i = 1; i < points.length - 1; i++) {
-        const current = points[i];
-        const next = points[i + 1];
-
-        ctx.quadraticCurveTo(
-          current.x * scale,
-          current.y * scale,
-          ((current.x + next.x) / 2) * scale,
-          ((current.y + next.y) / 2) * scale
-        );
-      }
-
-      const last = points[points.length - 1];
-
-      ctx.lineTo(
-        last.x * scale,
-        last.y * scale
-      );
-    }
-
-    ctx.stroke();
-    ctx.restore();
-  }, []);
-
-  // Redraw in order, so erasing removes whole stored strokes.
-  const redrawBoard = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (const stroke of strokesRef.current) {
-      renderStroke(stroke);
-    }
-  }, [renderStroke]);
-
-  const send = useCallback((message) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-
-    ws.send(JSON.stringify({
+  ws.send(
+    JSON.stringify({
       type: "whiteboard",
       roomId,
       participantId,
       ...message
-    }));
+    })
+  );
 
-    return true;
-  }, [ws, roomId, participantId]);
+  return true;
+},
+[ws, roomId, participantId]
 
-  const applyEraser = useCallback((eraserPoints, widthRatio) => {
-    if (!eraserPoints.length) return;
+);
 
-    const radius = widthRatio / 2;
+// -----------------------------------------------
+// Coordinates remain global to the entire board.
+// The scroll offset is included, so the correct
+// section is selected even after scrolling.
+// -----------------------------------------------
 
-    // Remove each complete stroke touched by the eraser path.
-    strokesRef.current = strokesRef.current.filter((stroke) => {
-      if (stroke.erase || !stroke.points.length) return true;
+/*const getPoint = useCallback((event) => {
+const firstCanvas = canvasRefs.current.get(0);
+const scroll = scrollRef.current;
 
-      const strokeRadius = stroke.widthRatio / 2;
+if (!firstCanvas || !scroll) return null;
 
-      return !pathsIntersect(
-        eraserPoints,
-        stroke.points,
-        radius + strokeRadius
-      );
+const rect = firstCanvas.getBoundingClientRect();
+
+if (!rect.width) return null;
+
+return {
+  x: (event.clientX - rect.left) / rect.width,
+  y: (
+    event.clientY -
+    rect.top +
+    scroll.scrollTop
+  ) / rect.width,
+  pressure:
+    event.pressure > 0
+      ? event.pressure
+      : 0.5
+};
+
+}, []);*/
+
+const getPoint = useCallback((event) => {
+  const canvas = event.currentTarget;
+  const scroll = scrollRef.current;
+
+  if (!canvas || !scroll) return null;
+
+  const rect = canvas.getBoundingClientRect();
+
+  if (!rect.width) return null;
+
+  const sectionIndex = Number(canvas.dataset.section);
+
+  const x = (event.clientX - rect.left) / rect.width;
+
+  const y =
+    (
+      event.clientY -
+      rect.top +
+      scroll.scrollTop
+    ) / rect.width;
+
+  return {
+    x,
+    y: y + (sectionIndex * SECTION_HEIGHT) / BOARD_WIDTH,
+    pressure: event.pressure > 0 ? event.pressure : 0.5
+  };
+}, []);
+
+
+// -----------------------------------------------
+// Render one stroke onto one section.
+// Points use global board coordinates.
+// Canvas clipping handles strokes crossing
+// section boundaries.
+// -----------------------------------------------
+
+const renderStroke = useCallback(
+(stroke, sectionIndex) => {
+const canvas = canvasRefs.current.get(sectionIndex);
+
+  if (!canvas || !stroke.points.length) return;
+
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) return;
+
+  const scale = BOARD_WIDTH;
+  const sectionTop = sectionIndex * SECTION_HEIGHT;
+  const width = stroke.widthRatio * scale;
+
+  ctx.save();
+
+  // Translate global board coordinates into
+  // this canvas section's local coordinates.
+  ctx.translate(0, -sectionTop);
+
+  ctx.globalCompositeOperation = stroke.erase
+    ? "destination-out"
+    : "source-over";
+
+  ctx.fillStyle = stroke.color;
+
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0];
+
+    ctx.beginPath();
+    ctx.arc(
+      point.x * scale,
+      point.y * scale,
+      width / 2,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.restore();
+    return;
+  }
+
+  const isActive =
+    activeStrokeRef.current === stroke ||
+    !stroke.isComplete;
+
+  let outline = stroke.cachedOutline;
+
+  if (!outline || isActive) {
+    const inputPoints = stroke.points.map(
+      (point) => [
+        point.x * scale,
+        point.y * scale,
+        point.pressure ?? 0.5
+      ]
+    );
+
+    outline = getStroke(inputPoints, {
+      ...STROKE_OPTIONS,
+      size: width,
+      last: !isActive
     });
 
-    strokeMapRef.current = new Map(
-      strokesRef.current.map((stroke) => [stroke.id, stroke])
-    );
+    if (!isActive) {
+      stroke.cachedOutline = outline;
+    }
+  }
 
-    redrawBoard();
-  }, [redrawBoard]);
+  if (outline.length) {
+    ctx.beginPath();
+    ctx.moveTo(outline[0][0], outline[0][1]);
 
-  const flushPoints = useCallback(() => {
-    const active = activeStrokeRef.current;
-
-    if (!active || !pendingRef.current.length) return;
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return;
+    for (let i = 1; i < outline.length; i++) {
+      ctx.lineTo(outline[i][0], outline[i][1]);
     }
 
-    const points = pendingRef.current.splice(
-      0,
-      pendingRef.current.length
-    );
+    ctx.closePath();
+    ctx.fill();
+  }
 
+  ctx.restore();
+},
+[]
+
+);
+
+// -----------------------------------------------
+// Redraw only the requested sections.
+// No need to clear the entire 20,000px board
+// on every pointer movement.
+// -----------------------------------------------
+
+const redrawSection = useCallback(
+(sectionIndex) => {
+const canvas = canvasRefs.current.get(sectionIndex);
+
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) return;
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  for (const stroke of strokesRef.current) {
+    if (getStrokeSections(stroke).includes(sectionIndex)) {
+      renderStroke(stroke, sectionIndex);
+    }
+  }
+},
+[renderStroke]
+
+);
+
+const scheduleRedraw = useCallback(
+(sections = null) => {
+if (sections === null) {
+for (let i = 0; i < SECTION_COUNT; i++) {
+dirtySectionsRef.current.add(i);
+}
+} else {
+for (const index of sections) {
+if (index >= 0 && index < SECTION_COUNT) {
+dirtySectionsRef.current.add(index);
+}
+}
+}
+
+  if (animationRef.current !== null) return;
+
+  animationRef.current = requestAnimationFrame(() => {
+    animationRef.current = null;
+
+    const dirty = [
+      ...dirtySectionsRef.current
+    ];
+
+    dirtySectionsRef.current.clear();
+
+    for (const index of dirty) {
+      redrawSection(index);
+    }
+  });
+},
+[redrawSection]
+
+);
+
+// -----------------------------------------------
+// Eraser
+// -----------------------------------------------
+
+const applyEraser = useCallback(
+(eraserPoints, widthRatio) => {
+if (!eraserPoints.length) return;
+
+  const radius = widthRatio / 2;
+  const affected = new Set();
+
+  // Remember the sections occupied by each
+  // removed stroke so they can be redrawn.
+  strokesRef.current = strokesRef.current.filter(
+    (stroke) => {
+      if (stroke.erase || !stroke.points.length) {
+        return true;
+      }
+
+      const intersects = pathsIntersect(
+        eraserPoints,
+        stroke.points,
+        radius + stroke.widthRatio / 2
+      );
+
+      if (intersects) {
+        for (const section of getStrokeSections(stroke)) {
+          affected.add(section);
+        }
+
+        return false;
+      }
+
+      return true;
+    }
+  );
+
+  // Also redraw sections traversed by the eraser.
+  const eraserStroke = {
+    points: eraserPoints,
+    widthRatio
+  };
+
+  for (const section of getStrokeSections(eraserStroke)) {
+    affected.add(section);
+  }
+
+  strokeMapRef.current = new Map(
+    strokesRef.current.map((stroke) => [
+      stroke.id,
+      stroke
+    ])
+  );
+
+  scheduleRedraw([...affected]);
+},
+[scheduleRedraw]
+
+);
+
+// -----------------------------------------------
+// Send accumulated points
+// -----------------------------------------------
+
+const flushPoints = useCallback(() => {
+const active = activeStrokeRef.current;
+
+if (!active || !pendingRef.current.length) {
+  return;
+}
+
+if (!ws || ws.readyState !== WebSocket.OPEN) {
+  return;
+}
+
+const points = pendingRef.current.splice(
+  0,
+  pendingRef.current.length
+);
+
+if (active.erase) {
+  send({
+    action: "erase",
+    strokeId: active.id,
+    points,
+    widthRatio: active.widthRatio
+  });
+} else {
+  send({
+    action: "points",
+    strokeId: active.id,
+    points,
+    color: active.color,
+    widthRatio: active.widthRatio
+  });
+}
+
+}, [ws, send]);
+
+useEffect(() => {
+const timer = setInterval(
+flushPoints,
+SEND_INTERVAL
+);
+
+return () => clearInterval(timer);
+
+}, [flushPoints]);
+
+// -----------------------------------------------
+// Finish drawing
+// -----------------------------------------------
+
+const handlePointerUp = useCallback(
+(event) => {
+if (!drawingRef.current) return;
+
+  if (
+    event &&
+    pointerIdRef.current !== null &&
+    event.pointerId !== undefined &&
+    event.pointerId !== pointerIdRef.current
+  ) {
+    return;
+  }
+
+  const active = activeStrokeRef.current;
+
+  flushPoints();
+
+  if (active) {
     if (active.erase) {
-      // Eraser path is a command, not a painted white stroke.
-      applyEraser(points, active.widthRatio);
-
       send({
         action: "erase",
         strokeId: active.id,
-        points,
-        widthRatio: active.widthRatio
+        points: [],
+        widthRatio: active.widthRatio,
+        final: true
       });
     } else {
       send({
-        action: "points",
+        action: "end",
         strokeId: active.id,
-        points,
         color: active.color,
         widthRatio: active.widthRatio
       });
     }
-  }, [ws, send, applyEraser]);
 
-  useEffect(() => {
-    const timer = setInterval(flushPoints, SEND_INTERVAL);
+    active.isComplete = true;
+    active.cachedOutline = null;
 
-    return () => clearInterval(timer);
-  }, [flushPoints]);
+    scheduleRedraw(getStrokeSections(active));
+  }
 
-  const extendBoard = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  drawingRef.current = false;
+  activeStrokeRef.current = null;
+  pendingRef.current = [];
+  pointerIdRef.current = null;
+},
+[flushPoints, send, scheduleRedraw]
 
-    const oldHeight = canvas.height;
-    const snapshot = document.createElement("canvas");
+);
 
-    snapshot.width = canvas.width;
-    snapshot.height = oldHeight;
+useEffect(() => {
+finishStrokeRef.current = handlePointerUp;
 
-    snapshot.getContext("2d").drawImage(canvas, 0, 0);
+return () => {
+  finishStrokeRef.current = null;
+};
 
-    canvas.height = oldHeight + EXTEND_BY;
+}, [handlePointerUp]);
 
-    canvas.getContext("2d").drawImage(snapshot, 0, 0);
-  }, []);
+// -----------------------------------------------
+// Start drawing
+// -----------------------------------------------
 
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
+const handlePointerDown = useCallback(
+(event) => {
+if (
+!canDraw ||
+modeRef.current !== "draw" ||
+drawingRef.current
+) {
+return;
+}
 
-    const handleScroll = () => {
-      if (
-        scroller.scrollTop + scroller.clientHeight >=
-        scroller.scrollHeight - 800
-      ) {
-        extendBoard();
-      }
-    };
+  event.preventDefault();
 
-    scroller.addEventListener("scroll", handleScroll);
+  const point = getPoint(event);
 
-    return () => {
-      scroller.removeEventListener("scroll", handleScroll);
-    };
-  }, [extendBoard]);
+  if (!point) return;
 
-  function handlePointerDown(event) {
-    if (!canDraw || modeRef.current !== "draw") return;
-
-    event.preventDefault();
-
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {}
-
-    drawingRef.current = true;
-
-    const point = getPoint(event);
-    filterRef.current = point;
-
-    const erase = toolRef.current === "eraser";
-
-    const stroke = createStroke(
-      `${participantId}-${Date.now()}-${Math.random()}`,
-      colorRef.current,
-      erase ? ERASER_WIDTH_RATIO : PEN_WIDTH_RATIO,
-      erase
+  try {
+    event.currentTarget.setPointerCapture(
+      event.pointerId
     );
-
-    activeStrokeRef.current = stroke;
-    pendingRef.current = [point];
-
-    if (erase) {
-      applyEraser([point], stroke.widthRatio);
-    } else {
-      stroke.points.push(point);
-      strokesRef.current.push(stroke);
-      strokeMapRef.current.set(stroke.id, stroke);
-      renderStroke(stroke);
-    }
-
-    // Send an explicit start message so recipients can associate batches.
-    send({
-      action: "start",
-      strokeId: stroke.id,
-      color: stroke.color,
-      widthRatio: stroke.widthRatio,
-      erase: stroke.erase,
-      points: [point]
-    });
+  } catch {
+    // Continue if pointer capture is unavailable.
   }
 
-  function handlePointerMove(event) {
-    if (
-      !canDraw ||
-      !drawingRef.current ||
-      modeRef.current !== "draw"
-    ) {
-      return;
-    }
+  pointerIdRef.current = event.pointerId;
+  drawingRef.current = true;
 
-    event.preventDefault();
+  const erase = toolRef.current === "eraser";
 
-    const active = activeStrokeRef.current;
-    if (!active) return;
+  const stroke = createStroke(
+    `${participantId}-${Date.now()}-${Math.random()}`,
+    colorRef.current,
+    erase ? ERASER_WIDTH_RATIO : PEN_WIDTH_RATIO,
+    erase
+  );
 
-    const events =
-      typeof event.getCoalescedEvents === "function"
-        ? event.getCoalescedEvents()
-        : [event];
+  stroke.points.push(point);
 
-    for (const movement of events) {
-      const point = filterPoint(getPoint(movement));
+  activeStrokeRef.current = stroke;
+  pendingRef.current = [];
 
-      active.points.push(point);
-      pendingRef.current.push(point);
+  if (erase) {
+    applyEraser([point], stroke.widthRatio);
+  } else {
+    strokesRef.current.push(stroke);
+    strokeMapRef.current.set(stroke.id, stroke);
 
-      if (!active.erase) {
-        // Redraw the active stroke to maintain a continuous smooth curve.
-        redrawBoard();
-      } else {
-        // Erase locally as the finger passes over existing writing.
-        applyEraser([point], active.widthRatio);
-      }
-    }
+    scheduleRedraw(getStrokeSections(stroke));
   }
 
-  function handlePointerUp() {
-    if (!drawingRef.current) return;
+  send({
+    action: "start",
+    strokeId: stroke.id,
+    color: stroke.color,
+    widthRatio: stroke.widthRatio,
+    erase: stroke.erase,
+    points: [point]
+  });
+},
+[
+  canDraw,
+  participantId,
+  getPoint,
+  applyEraser,
+  scheduleRedraw,
+  send
+]
 
-    drawingRef.current = false;
+);
 
-    const active = activeStrokeRef.current;
+// -----------------------------------------------
+// Continue drawing
+// -----------------------------------------------
 
-    if (active) {
-      // Force the remaining batch out before ending the stroke.
-      flushPoints();
+const handlePointerMove = useCallback(
+(event) => {
+if (
+!canDraw ||
+!drawingRef.current ||
+modeRef.current !== "draw" ||
+pointerIdRef.current !== event.pointerId
+) {
+return;
+}
 
-      if (active.erase) {
-        send({
-          action: "erase",
-          strokeId: active.id,
-          points: active.points,
-          widthRatio: active.widthRatio,
-          final: true
-        });
-      } else {
-        send({
-          action: "end",
-          strokeId: active.id,
-          color: active.color,
-          widthRatio: active.widthRatio
-        });
-      }
-    }
+  event.preventDefault();
 
-    activeStrokeRef.current = null;
-    pendingRef.current = [];
-    filterRef.current = null;
+  const active = activeStrokeRef.current;
+
+  if (!active) return;
+
+  const events =
+    typeof event.getCoalescedEvents === "function"
+      ? event.getCoalescedEvents()
+      : [event];
+
+  const newPoints = [];
+
+  for (const movement of events) {
+    const point = getPoint(movement);
+
+    if (!point) continue;
+
+    active.points.push(point);
+    pendingRef.current.push(point);
+    newPoints.push(point);
   }
 
-  useEffect(() => {
-    if (!ws) {
-     return
-    };
+  if (!newPoints.length) return;
 
-    function handleMessage(event) {
+  if (active.erase) {
+    applyEraser(newPoints, active.widthRatio);
+  } else {
+    // Redraw the sections touched by this stroke,
+    // including earlier sections if it spans them.
+    scheduleRedraw(getStrokeSections(active));
+  }
+},
+[
+  canDraw,
+  getPoint,
+  applyEraser,
+  scheduleRedraw
+]
 
-      let data;
+);
 
-      try {
-        data = JSON.parse(event.data);
-      } catch (err) {
-        alert(err.message);
-        return;
-      }
+// -----------------------------------------------
+// Receive remote participants' strokes.
+// Incoming points use the same global coordinate
+// system, so they render in the correct section.
+// -----------------------------------------------
 
-      if (data.type !== "whiteboard") {
-        return;
-      }
+useEffect(() => {
 
+if (!ws) return;
 
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+function handleMessage(event) {
+  let data;
 
-      if (data.action === "clear") {
-        strokesRef.current = [];
-        strokeMapRef.current.clear();
-        redrawBoard();
-        return;
-      }
+  try {
+    data = JSON.parse(event.data);
+  } catch {
+    return;
+  }
 
-      if (data.action === "erase") {
-        applyEraser(
-          data.points || [],
-          data.widthRatio || ERASER_WIDTH_RATIO
-        );
-        return;
-      }
+  if (data.type !== "whiteboard") return;
+  if (data.roomId !== roomId) return;
 
-      const id = data.strokeId;
-      if (!id) return;
+  if (data.participantId === participantId) {
+    return;
+  }
 
-      if (data.action === "start") {
-        const stroke = createStroke(
-          id,
-          data.color || "#111827",
-          data.widthRatio || PEN_WIDTH_RATIO,
-          Boolean(data.erase)
-        );
-
-        stroke.points = data.points || [];
-
-        strokesRef.current.push(stroke);
-        strokeMapRef.current.set(id, stroke);
-
-        redrawBoard();
-
-
-
-        return;
-      }
-
-      if (data.action === "points") {
-        let stroke = strokeMapRef.current.get(id);
-
-        if (!stroke) {
-          stroke = createStroke(
-            id,
-            data.color || "#111827",
-            data.widthRatio || PEN_WIDTH_RATIO,
-            false
-          );
-
-          strokesRef.current.push(stroke);
-          strokeMapRef.current.set(id, stroke);
-        }
-
-        stroke.points.push(...(data.points || []));
-        redrawBoard();
-        return;
-      }
-
-      if (data.action === "end") {
-        // Stroke remains in history for later erasing.
-        redrawBoard();
-      }
-    }
-
-    ws.addEventListener("message", handleMessage);
-
-    return () => {
-      ws.removeEventListener("message", handleMessage);
-    };
-  }, [
-    ws,
-    roomId,
-    participantId,
-    redrawBoard,
-    applyEraser
-  ]);
-
-  function clearBoard() {
-    if (!canDraw) return;
-
+  if (data.action === "clear") {
+    alert("clear")
     strokesRef.current = [];
     strokeMapRef.current.clear();
 
-    redrawBoard();
-    send({ action: "clear" });
+    scheduleRedraw();
+    return;
   }
 
-  return (
-    <div className="whiteboard-app">
-      <div className="whiteboard-scroll" ref={scrollRef}>
-        <canvas
-          ref={canvasRef}
-          width={BOARD_WIDTH}
-          height={INITIAL_HEIGHT}
-          className="whiteboard-canvas"
-          style={{
-            touchAction:
-              canDraw && mode === "draw" ? "none" : "pan-y"
-          }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onLostPointerCapture={handlePointerUp}
-        />
-      </div>
+  if (data.action === "erase") {
+    alert("erase")
+    applyEraser(
+      data.points || [],
+      data.widthRatio || ERASER_WIDTH_RATIO
+    );
 
-      <div className="whiteboard-floating-toolbar">
-        {canDraw ? (
-          <>
-            <div className="whiteboard-colors">
-              {COLORS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  aria-label={`Select colour ${item}`}
-                  className={
-                    "whiteboard-color" +
-                    (color === item && tool === "pen"
-                      ? " selected"
-                      : "")
-                  }
-                  style={{ backgroundColor: item }}
-                  onClick={() => selectColor(item)}
-                />
-              ))}
-            </div>
+    return;
+  }
 
-            <div className="whiteboard-tools">
-              <button
-                type="button"
-                className={tool === "pen" && mode === "draw" ? "active" : ""}
-                onClick={() => updateTool("pen")}
-              >
-                Pen
-              </button>
+  const id = data.strokeId;
 
-              <button
-                type="button"
-                className={tool === "eraser" && mode === "draw" ? "active" : ""}
-                onClick={() => updateTool("eraser")}
-              >
-                Eraser
-              </button>
+  if (!id) return;
 
-              <button
-                type="button"
-                className={mode === "scroll" ? "active" : ""}
-                onClick={() => updateMode(
-                  modeRef.current === "scroll" ? "draw" : "scroll"
-                )}
-              >
-                {mode === "scroll" ? "Draw" : "Scroll"}
-              </button>
+  if (data.action === "start") {
+    if (data.erase) return;
 
-              <button type="button" onClick={clearBoard}>
-                Clear
-              </button>
-            </div>
-          </>
-        ) : (
-          <strong>Class whiteboard</strong>
-        )}
-      </div>
-    </div>
-  );
+    if (strokeMapRef.current.has(id)) return;
+
+    const stroke = createStroke(
+      id,
+      data.color || COLORS[0],
+      data.widthRatio || PEN_WIDTH_RATIO
+    );
+
+    stroke.points = data.points || [];
+
+    strokesRef.current.push(stroke);
+    strokeMapRef.current.set(id, stroke);
+
+    scheduleRedraw(getStrokeSections(stroke));
+    return;
+  }
+
+  if (data.action === "points") {
+    alert("points")
+    let stroke = strokeMapRef.current.get(id);
+
+    if (!stroke) {
+      stroke = createStroke(
+        id,
+        data.color || COLORS[0],
+        data.widthRatio || PEN_WIDTH_RATIO
+      );
+
+      strokesRef.current.push(stroke);
+      strokeMapRef.current.set(id, stroke);
+    }
+
+    stroke.points.push(...(data.points || []));
+    stroke.isComplete = false;
+    stroke.cachedOutline = null;
+
+    scheduleRedraw(getStrokeSections(stroke));
+    return;
+  }
+
+  if (data.action === "end") {
+    const stroke = strokeMapRef.current.get(id);
+
+    if (stroke) {
+      stroke.isComplete = true;
+      stroke.cachedOutline = null;
+
+      scheduleRedraw(getStrokeSections(stroke));
+    }
+  }
 }
 
+ws.addEventListener("message", handleMessage);
+
+return () => {
+  ws.removeEventListener("message", handleMessage);
+};
+
+}, [
+ws,
+roomId,
+participantId,
+applyEraser,
+scheduleRedraw
+]);
+
+// -----------------------------------------------
+// Toolbar
+// -----------------------------------------------
+
+const updateMode = useCallback((next) => {
+if (next === modeRef.current) return;
+
+if (drawingRef.current) {
+  finishStrokeRef.current?.();
+}
+
+modeRef.current = next;
+setMode(next);
+
+}, []);
+
+const updateTool = useCallback(
+(next) => {
+toolRef.current = next;
+setTool(next);
+
+  updateMode(next === "hand" ? "scroll" : "draw");
+},
+[updateMode]
+
+);
+
+const selectColor = useCallback(
+(next) => {
+colorRef.current = next;
+setColor(next);
+
+  updateTool("pen");
+},
+[updateTool]
+
+);
+
+const clearBoard = useCallback(() => {
+if (!canDraw) return;
+
+if (drawingRef.current) {
+  finishStrokeRef.current?.();
+}
+
+strokesRef.current = [];
+strokeMapRef.current.clear();
+
+scheduleRedraw();
+send({ action: "clear" });
+
+}, [canDraw, scheduleRedraw, send]);
+
+// -----------------------------------------------
+// Cleanup
+// -----------------------------------------------
+
+useEffect(() => {
+return () => {
+if (animationRef.current !== null) {
+cancelAnimationFrame(animationRef.current);
+}
+};
+}, []);
+
+// -----------------------------------------------
+// UI
+// -----------------------------------------------
+
+return (
+<div className="whiteboard-app">
+<div
+className="whiteboard-scroll"
+ref={scrollRef}
+>
+<div className="whiteboard-board">
+{Array.from(
+{ length: SECTION_COUNT },
+(_, index) => (
+<canvas
+key={index}
+data-section={index}
+ref={(element) => {
+if (element) {
+canvasRefs.current.set(index, element);
+} else {
+canvasRefs.current.delete(index);
+}
+}}
+width={BOARD_WIDTH}
+height={SECTION_HEIGHT}
+className="whiteboard-canvas"
+style={{
+borderLeft: "1px solid grey",
+touchAction:
+canDraw && mode === "draw"
+? "none"
+: "pan-y"
+}}
+onPointerDown={handlePointerDown}
+onPointerMove={handlePointerMove}
+onPointerUp={handlePointerUp}
+onPointerCancel={handlePointerUp}
+onLostPointerCapture={handlePointerUp}
+/>
+)
+)}
+</div>
+</div>
+
+  <div className="whiteboard-floating-toolbar">
+    {canDraw ? (
+      <>
+        <div className="whiteboard-colors">
+          {COLORS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-label={`Select colour ${item}`}
+              className={
+                "whiteboard-color" +
+                (
+                  color === item && tool === "pen"
+                    ? " selected"
+                    : ""
+                )
+              }
+              style={{ backgroundColor: item }}
+              onClick={() => selectColor(item)}
+            />
+          ))}
+        </div>
+
+        <div className="whiteboard-tools">
+          <button
+            type="button"
+            className={
+              tool === "pen" && mode === "draw"
+                ? "active"
+                : ""
+            }
+            onClick={() => updateTool("pen")}
+          >
+            Pen
+          </button>
+
+          <button
+            type="button"
+            className={
+              tool === "eraser" && mode === "draw"
+                ? "active"
+                : ""
+            }
+            onClick={() => updateTool("eraser")}
+          >
+            Eraser
+          </button>
+
+          <button
+            type="button"
+            className={mode === "scroll" ? "active" : ""}
+            onClick={() =>
+              updateMode(
+                modeRef.current === "scroll"
+                  ? "draw"
+                  : "scroll"
+              )
+            }
+          >
+           View
+          </button>
+
+          <button type="button" onClick={clearBoard}>
+            Clear
+          </button>
+        </div>
+      </>
+    ) : (
+      <strong>Class whiteboard</strong>
+    )}
+  </div>
+</div>
+
+);
+}
