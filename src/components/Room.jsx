@@ -56,6 +56,26 @@ import Whiteboard from "../components/Whiteboard";
  const speakingRef = useRef(false);
  const animationFrameRef = useRef(null);
 
+async function handleShare() {
+  const roomLink = window.location.href;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: "ROOM LINK",
+        text: "Click the link to join room:",
+        url: `https://audio.domtech.co.ke/full-name/${roomId}`
+      });
+    } else {
+      await navigator.clipboard.writeText(roomLink);
+      alert("Room link copied!");
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("Sharing failed:", err);
+    }
+  }
+}
 
 function detectSpeaking(stream) {
   const audioContext = new AudioContext();
@@ -706,7 +726,7 @@ useEffect(() => {
 
       </div>
       <div className="board">
-        <h3>Digital Board</h3>
+        <div className="shareParent"><button onClick={handleShare}>Share link</button><h3>Digital Board</h3></div>
         <hr />
         <Whiteboard
           ws={wsRef.current}

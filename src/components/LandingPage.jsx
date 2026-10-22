@@ -16,8 +16,8 @@ export function LandingPage() {
      setBtnText("Processing...");
      setBtnDisaled(true);
     try {
-     /*
-     navigate(`/room/123`);
+     
+    /*navigate(`/room/123`);
      return;*/
      const res = await fetch("https://api.domtech.co.ke⁠/create-room");
      const data = await res.json();

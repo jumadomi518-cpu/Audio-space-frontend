@@ -84,11 +84,27 @@
 
 
 
-
- .room main .board {
+.room main .board {
   flex: 2;
   height: 100%;
  }
+
+.room .shareParent {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.room .shareParent button {
+  font-size: 10px;
+  border: none;
+  color: white;
+  background-color: purple;
+  border-radius: 3px;
+  padding: 5px;
+}
 
  .room main .board h3 {
    text-align: right;

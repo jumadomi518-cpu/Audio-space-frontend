@@ -8,10 +8,14 @@ useState
 import { getStroke } from "perfect-freehand";
 import "./styles/whiteboard.css";
 
-let BOARD_WIDTH;
+let BOARD_WIDTH = window.innerWidth;
+let BOARD_HEIGHT = window.innerHeight;
+
 const SECTION_HEIGHT = 500;
-const SECTION_COUNT = 200;
-const BOARD_HEIGHT = SECTION_HEIGHT * SECTION_COUNT;
+let SECTION_COUNT = Math.ceil(
+  BOARD_HEIGHT / SECTION_HEIGHT
+);
+
 const SEND_INTERVAL = 25;
 
 const PEN_WIDTH_RATIO = 0.003;
@@ -172,17 +176,24 @@ const [boardWidth, setBoardWidth] = useState(window.innerWidth);
 
 
 useEffect(() => {
-
-   BOARD_WIDTH = window.innerWidth;
-
-  const handleResize = () => {
+  const updateDimensions = () => {
     BOARD_WIDTH = window.innerWidth;
+    BOARD_HEIGHT = window.innerHeight;
+
+    SECTION_COUNT = Math.ceil(
+      BOARD_HEIGHT / SECTION_HEIGHT
+    );
+
     setBoardWidth(window.innerWidth);
   };
 
-  window.addEventListener("resize", handleResize);
+  updateDimensions();
 
-  return () => window.removeEventListener("resize", handleResize);
+  window.addEventListener("resize", updateDimensions);
+
+  return () => {
+    window.removeEventListener("resize", updateDimensions);
+  };
 }, []);
 
 
