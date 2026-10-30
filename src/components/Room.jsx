@@ -746,14 +746,9 @@ useEffect(() => {
         <h3>Participants: <span style={{ color: "green" }}>{participants.length > 0 ? participants.length : "..."}</span></h3>
         <hr />
         {participants.map((p, index) => {
-
-         const tag = p?.name?.trim().split(/\s+/) || [];
-         const initials = tag
-           .map((name) => name[0])
-           .slice(0, 2)
-           .join("")
-           .toUpperCase();
-
+   
+        const initials = p?.name?.trim().split(/\s+/)[0]?.[0]?.toUpperCase() || "";
+         
          return (
           <div className="userInfo" key={index}>
             <div className={p?.speaking ? "speakingIndicator" : ""}>
@@ -767,7 +762,7 @@ useEffect(() => {
                 />
                )}
              </div>
-            <p>{p?.name}</p>
+            <p className="name">{p?.name}</p>
             <FontAwesomeIcon
               icon={p?.microphone === "unmuted" ? faMicrophone : faMicrophoneSlash}
               color="grey"
