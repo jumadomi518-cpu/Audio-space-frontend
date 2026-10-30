@@ -1,0 +1,836 @@
+
+import { useNavigate, useParams } from "react-router";
+import React, { useState, useEffect, useRef } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMicrophone, faVideo, faArrowRight, faMicrophoneSlash, faHand } from "@fortawesome/free-solid-svg-icons";
+import { faHand as faHandRegular } from "@fortawesome/free-regular-svg-icons";
+import "./styles/room.css"
+import { device } from "../utils//mediasoup.js";
+import { Spinner } from "./Spinner.jsx"
+import Whiteboard from "../components/Whiteboard";
+
+
+ export function Room() {
+  
+ const [ muted, setMuted ] = useState(true);
+ const [ handRaised, setHandRaised ] = useState(false);
+ const [ micDisabled, setMicDisabled ] = useState(false);
+ const [ handDisabled, setHandDisabled ] = useState(false);
+ const [ loading, setLoading ] = useState(false);
+ const [ roomAction, setRoomAction ] = useState("loading...");
+
+ const [ participants, setParticipants ] = useState([]);
+ const [ participantInfo, setParticipantInfo ] = useState({});
+ const [ hostId, setHostId ] = useState(null);
+ const { roomId } = useParams();
+ const [ loadingRoom, setLoadingRoom ] = useState(true);
+ const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
+
+ const navigate = useNavigate();
+ 
+ const participantId = localStorage.getItem("participantId");
+ 
+ const wsRef = useRef(null);
+ const retryTimerRef = useRef(null);
+
+
+ const sendTransportRef = useRef(null);
+ const recvTransportRef = useRef(null);
+ const connectCallbackRef = useRef(null);
+ const connectErrbackRef = useRef(null);
+
+ const sendConnectCallbackRef = useRef(null);
+ const sendConnectErrbackRef = useRef(null);
+ const produceCallbackRef = useRef(null);
+ const produceErrbackRef = useRef(null);
+
+ const audioProducerRef = useRef(null);
+ const localStreamRef = useRef(null);
+
+ const deviceRef = useRef(null);
+ const consumersRef = useRef(new Map());
+ const audioElementsRef = useRef(new Map());
+
+
+ const audioContextRef = useRef(null);
+ const speakingRef = useRef(false);
+ const animationFrameRef = useRef(null);
+
+async function handleShare() {
+  const roomLink = window.location.href;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: "ROOM LINK",
+        text: "Click the link to join room:",
+        url: `https://audio.domtech.co.ke/full-name/${roomId}`
+      });
+    } else {
+      await navigator.clipboard.writeText(roomLink);
+      alert("Room link copied!");
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("Sharing failed:", err);
+    }
+  }
+}
+
+function detectSpeaking(stream) {
+  const audioContext = new AudioContext();
+  audioContextRef.current = audioContext;
+
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
+
+  analyser.fftSize = 512;
+  source.connect(analyser);
+
+  const data = new Uint8Array(analyser.fftSize);
+
+  function checkVolume() {
+    analyser.getByteTimeDomainData(data);
+
+    let sum = 0;
+
+    for (const value of data) {
+      const normalized = (value - 128) / 128;
+      sum += normalized * normalized;
+    }
+
+    const volume = Math.sqrt(sum / data.length);
+    const isSpeaking = volume > 0.04;
+
+    if (isSpeaking !== speakingRef.current) {
+      speakingRef.current = isSpeaking;
+
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: "speaking-update",
+          roomId,
+          participantId,
+          speaking: isSpeaking
+        }));
+      }
+    }
+
+    animationFrameRef.current =
+      requestAnimationFrame(checkVolume);
+  }
+
+  checkVolume();
+}
+
+
+
+async function startSpeaking() {
+  try {
+
+
+     if (audioProducerRef.current &&
+        !audioProducerRef.current.closed) {
+      return audioProducerRef.current;
+    }
+
+    const sendTransport = sendTransportRef.current;
+
+    if (!sendTransport) {
+      alert("Send transport is not ready");
+      return;
+    }
+
+    //Request microphone access
+ const stream = await navigator.mediaDevices.getUserMedia({
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
+  },
+  video: false
+});
+
+    localStreamRef.current = stream;
+  
+     detectSpeaking(stream);  
+  
+    //Get the microphone audio track
+    const audioTrack = stream.getAudioTracks()[0];
+
+
+    if (!audioTrack) {
+      alert("No microphone audio track found");
+      return;
+    }
+
+    //Create the producer
+    const producer = await sendTransport.produce({
+      track: audioTrack
+    });
+
+
+   alert(JSON.stringify({
+  producerId: producer.id,
+  paused: producer.paused,
+  closed: producer.closed,
+  trackState: producer.track.readyState
+}, null, 2));
+
+    audioProducerRef.current = producer;
+
+    producer.on("transportclose", () => {
+      if (audioProducerRef.current === producer) {
+        audioProducerRef.current = null;
+      }
+    });
+
+    return producer;
+  } catch (error) {
+    console.error("Failed to start speaking:", error);
+    alert(error.message);
+  }
+}
+
+
+
+useEffect(() => {
+
+function connectWebSocket() {
+
+  const ws = new WebSocket("wss://api.domtech.co.ke");
+
+  wsRef.current = ws;
+
+
+  ws.onopen = () => {
+    setSpinnerInfo("Setting up Room");
+    ws.send(JSON.stringify({
+      type: "register",
+      participantId: participantId,
+      roomId: roomId
+    }));
+  };
+
+  ws.onclose = () => {
+    alert("Internet disconnected. Retrying to connect...");
+
+    retryTimer = setTimeout(() => {
+      connectWebSocket();
+    }, 2000);
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+   
+    if (data.type === "registered") {
+     ws.send(JSON.stringify({
+      type: "get-room-state",
+      participantId: participantId,
+      roomId: roomId
+    }));
+
+ ws.send(JSON.stringify({
+   type: "createWebRtcTransport",
+   roomId: roomId,
+   participantId: participantId,
+   direction: "recv"
+  }));
+
+ws.send(JSON.stringify({
+   type: "createWebRtcTransport",
+   roomId: roomId,
+   participantId: participantId,
+   direction: "send"
+  }));
+
+
+}
+
+
+    // Refresh the participant list after reconnecting
+    if (data.type === "room-state") {
+      setParticipants(data.participants);
+      const user = data.participants.find(p => p.id === participantId);
+      setMuted(user?.microphone === "muted");
+      setHandRaised(user?.hand === "raised");
+      setParticipantInfo(user);
+      const host = data.participants.find(p => p.isHost === true);
+      setHostId(host?.id);
+      setSpinnerInfo("Your Room is ready");
+      setLoadingRoom(false);
+    }
+
+
+    if (data.type === "new-participant") {
+      setParticipants((prev) => [data?.participant, ...prev]);
+    }
+
+
+
+
+  if (data.type === "webRtcTransportCreated") {
+
+  if (data.direction === "recv") {
+    const recvTransport = device.createRecvTransport({
+      id: data.id,
+      iceParameters: data.iceParameters,
+      iceCandidates: data.iceCandidates,
+      dtlsParameters: data.dtlsParameters
+    });
+
+    recvTransportRef.current = recvTransport
+  
+     recvTransport.on("connectionstatechange", (state) => {
+  alert(JSON.stringify({
+    transport: "RECEIVE",
+    state
+  }, null, 2));
+});
+
+    recvTransport.on(
+      "connect",
+      ({ dtlsParameters }, callback, errback) => {
+       alert("RECEIVE CONNECT EVENT FIRED");      
+        
+        connectCallbackRef.current = callback;
+        connectErrbackRef.current = errback;
+
+        ws.send(JSON.stringify({
+          type: "connectTransport",
+          roomId,
+          participantId,
+          transportId: recvTransport.id,
+          dtlsParameters
+        }));
+      }
+    );
+  }
+
+
+  if (data.direction === "send") {
+
+ alert("SEND TRANSPORT CREATION STARTED");
+
+  const sendTransport = device.createSendTransport({
+    id: data.id,
+    iceParameters: data.iceParameters,
+    iceCandidates: data.iceCandidates,
+    dtlsParameters: data.dtlsParameters
+  });
+
+  sendTransportRef.current = sendTransport;
+
+alert(JSON.stringify({
+    transportCreated: !!sendTransport,
+    id: sendTransport.id,
+    connectionState: sendTransport.connectionState
+  }, null, 2));
+
+
+  sendTransport.on("connectionstatechange", (state) => {
+  alert(JSON.stringify({
+    transport: "SEND",
+    state
+  }, null, 2));
+});
+
+
+  //Connect the send transport
+  sendTransport.on(
+    "connect",
+    ({ dtlsParameters }, callback, errback) => {
+
+
+     alert("SEND CONNECT EVENT FIRED");
+
+  alert(JSON.stringify({
+    transportId: sendTransport.id,
+    dtlsParameters: !!dtlsParameters
+  }, null, 2));
+
+      ws.send(JSON.stringify({
+        type: "connectTransport",
+        roomId,
+        participantId,
+        transportId: sendTransport.id,
+        dtlsParameters
+      }));
+
+      sendConnectCallbackRef.current = callback;
+      sendConnectErrbackRef.current = errback;
+    }
+  );
+
+  //Ask the backend to create the producer
+  sendTransport.on(
+    "produce",
+    ({ kind, rtpParameters }, callback, errback) => {
+      produceCallbackRef.current = callback;
+      produceErrbackRef.current = errback;
+
+      ws.send(JSON.stringify({
+        type: "produce",
+        roomId,
+        participantId,
+        transportId: sendTransport.id,
+        kind,
+        rtpParameters
+      }));
+    }
+  );
+
+}
+  
+
+ }
+
+
+if (data.type === "transportConnected") {
+
+
+alert(JSON.stringify({
+    event: "TRANSPORT CONNECTED",
+    transportId: data.transportId,
+    successful: data.successful,
+    message: data.message
+  }, null, 2));
+
+  const isSendTransport =
+    data.transportId === sendTransportRef.current?.id;
+
+  const callbackRef = isSendTransport
+    ? sendConnectCallbackRef
+    : connectCallbackRef;
+
+  const errbackRef = isSendTransport
+    ? sendConnectErrbackRef
+    : connectErrbackRef;
+
+  if (data.successful) {
+    callbackRef.current?.();
+  } else {
+    errbackRef.current?.(
+      new Error(data.error || "Transport connection failed")
+    );
+  }
+
+  callbackRef.current = null;
+  errbackRef.current = null;
+}
+ 
+
+if (data.type === "producerCreated") {
+  if (data.successful && data.producerId) {
+    produceCallbackRef.current?.({
+      id: data.producerId
+    });
+
+    console.log("Producer created:", data.producerId);
+  } else {
+    produceErrbackRef.current?.(
+      new Error(data.message || "Producer creation failed")
+    );
+  }
+
+  produceCallbackRef.current = null;
+  produceErrbackRef.current = null;
+}
+
+
+
+if (data.type === "newProducer") {
+ /* if (data.participantId === participantId) {
+    return;
+  }*/
+
+  if (data.kind !== "audio") {
+    return;
+  }
+
+  if (!device || !device.loaded) {
+    console.error("Mediasoup Device is not loaded");
+    return;
+  }
+
+  if (!recvTransportRef.current) {
+    console.error("Receive transport is not ready");
+    return;
+  }
+
+  ws.send(JSON.stringify({
+    type: "consume",
+    roomId,
+    participantId,
+    transportId: recvTransportRef.current.id,
+    producerId: data.producerId,
+    rtpCapabilities: device.rtpCapabilities
+  }));
+
+}
+
+
+
+
+
+
+
+
+
+if (data.type === "consumerCreated") {
+
+  if (!data.successful) {
+    console.error("Consumer creation failed:", data.message);
+    return;
+  }
+
+  (async () => {
+    try {
+      const recvTransport = recvTransportRef.current;
+
+      if (!recvTransport) {
+        throw new Error("Receive transport is not ready");
+      }
+
+      // Create the local mediasoup-client consumer.
+      const consumer = await recvTransport.consume({
+        id: data.consumerId,
+        producerId: data.producerId,
+        kind: data.kind,
+        rtpParameters: data.rtpParameters
+      });
+
+      consumersRef.current.set(consumer.id, consumer);
+
+
+     
+
+      // Attach the incoming audio track.
+      const stream = new MediaStream([consumer.track]);
+      const audio = new Audio();
+
+      audio.autoplay = true;
+      audio.srcObject = stream;
+
+      audioElementsRef.current.set(consumer.id, audio);
+
+      // Ask the backend to resume the paused server-side consumer.
+      ws.send(JSON.stringify({
+        type: "resumeConsumer",
+        roomId,
+        participantId,
+        consumerId: data.consumerId
+      }));
+
+      // Attempt to play the incoming audio.
+      try {
+        await audio.play();
+      } catch (error) {
+        alert(
+          "Browser blocked audio playback. Tap the page and try again.",
+          error
+        );
+      }
+
+      // Clean up when the consumer or its transport closes.
+      const cleanup = () => {
+        audio.pause();
+        audio.srcObject = null;
+
+        consumersRef.current.delete(consumer.id);
+        audioElementsRef.current.delete(consumer.id);
+      };
+
+      consumer.on("transportclose", cleanup);
+      consumer.on("producerclose", cleanup);
+
+    } catch (error) {
+      alert("Failed to set up incoming audio:", error);
+    }
+  })();
+}
+
+
+if (data.type === "participantLeft") {
+  setParticipants((prev) =>
+    prev.filter((p) => p.id !== data.participantId)
+  );
+}
+
+
+
+if (data.type === "microphone-update") {
+
+  if (participantId === data?.participantId) {
+    setMuted(data.status === "muted");
+  }
+
+  setParticipants((prev) =>
+    prev
+      .map((p) =>
+        p?.id === data.participantId
+          ? { ...p, microphone: data.status }
+          : p
+      )
+      .sort((a, b) => {
+        if (a.microphone === "unmuted" && b.microphone !== "unmuted") {
+          return -1;
+        }
+
+        if (a.microphone !== "unmuted" && b.microphone === "unmuted") {
+          return 1;
+        }
+
+        return 0;
+      })
+  );
+}
+
+    if (data.type === "hand-update") {
+      
+      if (participantId === data?.participantId) {
+         setHandRaised(data.status === "raised");
+      }
+
+  setParticipants((prev) =>
+  prev
+    .map((p) =>
+      p?.id === data.participantId
+        ? { ...p, hand: data.status }
+        : p
+    )
+    .sort((a, b) =>
+      (b.hand === "raised" ? 1 : 0) -
+      (a.hand === "raised" ? 1 : 0)
+    )
+  );
+ }
+
+
+if (data.type === "speaking-update") {
+  setParticipants(prev =>
+    prev.map(participant =>
+      participant.id === data.participantId
+        ? {
+            ...participant,
+            speaking: data.speaking
+          }
+        : participant
+    )
+  );
+}
+
+
+  };
+}
+
+connectWebSocket();
+
+}, [roomId])
+
+function sendStatus(type, status) {
+
+  const ws = wsRef.current;
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      participantId: participantId,
+      roomId: roomId,
+      type: type,
+      status: status
+    }));
+
+  } else {
+    console.log("WebSocket is not connected");
+  }
+}
+
+
+async function handleMicrophone() {
+  try {
+    let producer = audioProducerRef.current;
+
+    if (muted) {
+      // Create the producer if it doesn't exist
+      if (!producer || producer.closed) {
+        producer = await startSpeaking();
+      }
+
+      if (!producer) {
+       return;
+      }
+
+
+      // Resume audio locally
+      await producer.resume();
+
+      // Update the UI after local success
+      // setMuted(false);
+
+      // Notify backend
+      sendStatus("microphone", "unmuted");
+
+    } else {
+      if (producer && !producer.closed) {
+        await producer.pause();
+      }
+
+      setMuted(true);
+
+      sendStatus("microphone", "muted");
+    }
+
+  } catch (error) {
+    console.error("Microphone toggle failed:", error);
+
+    alert(error.message);
+  }
+}
+
+
+function handleRaiseHand() {
+  const status = handRaised ? "lowered" : "raised";
+  sendStatus("hand", status);
+}
+
+function handleLeaveRoom() {
+ const ws = wsRef.current;
+ const con = confirm("Are you sure you want to leave");
+
+ if (!con) {
+  return;
+ }
+
+ ws.send(JSON.stringify({
+      participantId: participantId,
+      roomId: roomId,
+      type: "leave-room"
+    }));
+ navigate(`/full-name/${roomId}`, { replace: true });
+}
+
+
+useEffect(() => {
+  const audio = new Audio("/audio.m4a");
+  if (participants.length === 1) {
+   // audio.play();
+  }
+  return () => {
+    audio.pause();
+    audio.currentTime = 0;
+  };
+
+}, [participants]);
+
+
+
+
+
+
+
+  return (
+   <div className="room">
+    {loadingRoom && (
+     <div className="overlay">
+       <div className="spinnerContainer">
+         <Spinner />
+          <p>{spinnerInfo}</p>
+       </div>
+     </div>)}
+     <main>
+      <div className="participants">
+        <h3>Participants: <span style={{ color: "green" }}>{participants.length > 0 ? participants.length : "..."}</span></h3>
+        <hr />
+        {participants.map((p, index) => {
+
+         const tag = p?.name?.trim().split(/\s+/) || [];
+         const initials = tag
+           .map((name) => name[0])
+           .slice(0, 2)
+           .join("")
+           .toUpperCase();
+
+         return (
+          <div className="userInfo" key={index}>
+            <div className={p?.speaking ? "speakingIndicator" : ""}>
+              {p.hand === "lowered" ? (
+               <span><b>{initials || ""}</b></span>
+               ) : ( 
+               <FontAwesomeIcon
+                 icon={faHand}
+                 size="1.5"
+                 color="white"
+                />
+               )}
+             </div>
+            <p>{p?.name}</p>
+            <FontAwesomeIcon
+              icon={p?.microphone === "unmuted" ? faMicrophone : faMicrophoneSlash}
+              color="grey"
+            />
+        </div>
+         )
+       })}
+
+
+      </div>
+      <div className="board">
+        <div className="shareParent"><button onClick={handleShare}>Share link</button><h3>Digital Board</h3></div>
+        <hr />
+        <Whiteboard
+          ws={wsRef.current}
+          roomId={roomId}
+          participantId={participantId}
+          canDraw={true}
+        />
+      </div>
+     </main>
+     <footer>
+      {loading && (
+      <div className="action">
+      <p>{roomAction}</p>
+       </div>)}
+       <div>
+         <button 
+           onClick={handleMicrophone} 
+           disabled={micDisabled}>
+          {!muted ? (
+          <FontAwesomeIcon
+            icon={faMicrophone}
+            size="2x"
+            color="purple"
+          />
+          ) : (
+          <FontAwesomeIcon
+            icon={faMicrophoneSlash}
+            size="2x"
+            color="purple"
+          />
+          )}
+         </button>
+         <button onClick={handleRaiseHand}>
+          {!handRaised ? (
+          <FontAwesomeIcon
+            icon={faHandRegular}
+            size="2x"
+            color="black"
+          />
+          ) : (
+           <FontAwesomeIcon
+            icon={faHand}
+            size="2x"
+            color="purple"
+          />
+          )}
+         </button>
+         <button onClick={handleLeaveRoom}>
+          <FontAwesomeIcon
+            icon={faArrowRight}
+            size="2x"
+            color="white"
+          />
+         </button>
+       </div>
+     </footer>
+   </div>
+  )
+ }

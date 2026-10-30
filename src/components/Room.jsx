@@ -184,6 +184,32 @@ async function startSpeaking() {
 }
 
 
+const consumingProducers = useRef(new Set());
+
+const consumeProducer = (producerData) => {
+  if (producerData.participantId === participantId) return;
+  const ws = wsRef.current;
+
+
+  if (producerData.kind !== "audio") return;
+
+  if (!device?.loaded || !recvTransportRef.current) return;
+
+  if (consumingProducers.current.has(producerData.producerId)) return;
+
+  consumingProducers.current.add(producerData.producerId);
+
+  ws.send(JSON.stringify({
+    type: "consume",
+    roomId,
+    participantId,
+    transportId: recvTransportRef.current.id,
+    producerId: producerData.producerId,
+    rtpCapabilities: device.rtpCapabilities
+  }));
+};
+
+
 
 useEffect(() => {
 
@@ -271,12 +297,10 @@ ws.send(JSON.stringify({
     });
 
     recvTransportRef.current = recvTransport
-  
 
     recvTransport.on(
       "connect",
       ({ dtlsParameters }, callback, errback) => {
-      
         
         connectCallbackRef.current = callback;
         connectErrbackRef.current = errback;
@@ -290,10 +314,20 @@ ws.send(JSON.stringify({
         }));
       }
     );
+
+
+    ws.send(JSON.stringify({
+     type: "getProducers",
+     roomId,
+     participantId
+   }));
+
+
   }
 
 
   if (data.direction === "send") {
+
   const sendTransport = device.createSendTransport({
     id: data.id,
     iceParameters: data.iceParameters,
@@ -308,6 +342,7 @@ ws.send(JSON.stringify({
   sendTransport.on(
     "connect",
     ({ dtlsParameters }, callback, errback) => {
+
       ws.send(JSON.stringify({
         type: "connectTransport",
         roomId,
@@ -366,6 +401,7 @@ if (data.type === "transportConnected") {
     );
   }
 
+
   callbackRef.current = null;
   errbackRef.current = null;
 }
@@ -389,9 +425,24 @@ if (data.type === "producerCreated") {
 }
 
 
+if (data.type === "existingProducers") {
+
+  data.producers.forEach(producer => {
+    consumeProducer(producer);
+  });
+
+}
+
+
+
+
+
 
 if (data.type === "newProducer") {
-  if (data.participantId === participantId) {
+
+consumeProducer(data);
+
+  /*if (data.participantId === participantId) {
     return;
   }
 
@@ -417,6 +468,7 @@ if (data.type === "newProducer") {
     producerId: data.producerId,
     rtpCapabilities: device.rtpCapabilities
   }));
+*/
 
 }
 
@@ -442,6 +494,7 @@ if (data.type === "consumerCreated") {
       if (!recvTransport) {
         throw new Error("Receive transport is not ready");
       }
+
 
       // Create the local mediasoup-client consumer.
       const consumer = await recvTransport.consume({
