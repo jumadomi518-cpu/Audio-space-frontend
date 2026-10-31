@@ -215,7 +215,7 @@ useEffect(() => {
 
 function connectWebSocket() {
 
-  const ws = new WebSocket("wss://api.domtech.co.ke");
+  const ws = new WebSocket("wss://azure.domtech.co.ke");
 
   wsRef.current = ws;
 

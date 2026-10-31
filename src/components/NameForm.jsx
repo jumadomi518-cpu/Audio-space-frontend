@@ -20,7 +20,7 @@ async function handleEnterRoom(e) {
   setBtnDisaled(true);
 
   try {
-    const res = await fetch("https://api.domtech.co.ke⁠/join-room", {
+    const res = await fetch("https://azure.domtech.co.ke⁠/join-room", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
