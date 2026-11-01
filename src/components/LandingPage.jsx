@@ -17,8 +17,9 @@ export function LandingPage() {
      setBtnDisaled(true);
     try {
      
-    /*navigate(`/room/123`);
+   /* navigate(`/room/123`);
      return;*/
+
      const res = await fetch("https://azure.domtech.co.ke⁠/create-room");
      const data = await res.json();
 

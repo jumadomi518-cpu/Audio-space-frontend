@@ -2,10 +2,10 @@
 import { useNavigate, useParams } from "react-router";
 import React, { useState, useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMicrophone, faVideo, faArrowRight, faMicrophoneSlash, faHand } from "@fortawesome/free-solid-svg-icons";
+import { faMicrophone, faVideo, faArrowRight, faMicrophoneSlash, faHand, faMessage } from "@fortawesome/free-solid-svg-icons";
 import { faHand as faHandRegular } from "@fortawesome/free-regular-svg-icons";
 import "./styles/room.css"
-import { device } from "../utils//mediasoup.js";
+import { Device } from "mediasoup-client";
 import { Spinner } from "./Spinner.jsx"
 import Whiteboard from "../components/Whiteboard";
 
@@ -28,8 +28,11 @@ import Whiteboard from "../components/Whiteboard";
 
  const navigate = useNavigate();
  
- const participantId = localStorage.getItem("participantId");
- 
+ const participantId = localStorage.getItem("participantId") || null;
+ const name = localStorage.getItem("name");
+ const isHost = localStorage.getItem("isHost") === "true";
+
+
  const wsRef = useRef(null);
  const retryTimerRef = useRef(null);
 
@@ -56,6 +59,14 @@ import Whiteboard from "../components/Whiteboard";
  const speakingRef = useRef(false);
  const animationFrameRef = useRef(null);
 
+ if (!deviceRef.current) {
+  deviceRef.current = new Device();
+}
+
+const device = deviceRef.current;
+
+
+
 async function handleShare() {
   const roomLink = window.location.href;
 
@@ -76,6 +87,48 @@ async function handleShare() {
     }
   }
 }
+
+function resetWebRTCState() {
+  // Close old microphone producer
+  audioProducerRef.current?.close();
+  audioProducerRef.current = null;
+
+  // Close old consumers
+  for (const consumer of consumersRef.current.values()) {
+    consumer.close();
+  }
+
+  consumersRef.current.clear();
+
+  // Remove old audio elements
+  for (const audio of audioElementsRef.current.values()) {
+    audio.pause();
+    audio.srcObject = null;
+  }
+
+  audioElementsRef.current.clear();
+
+  // Clear producer tracking
+  consumingProducers.current.clear();
+
+  // Close old transports
+  sendTransportRef.current?.close();
+  recvTransportRef.current?.close();
+
+  sendTransportRef.current = null;
+  recvTransportRef.current = null;
+
+  // Clear pending callbacks
+  connectCallbackRef.current = null;
+  connectErrbackRef.current = null;
+
+  sendConnectCallbackRef.current = null;
+  sendConnectErrbackRef.current = null;
+
+  produceCallbackRef.current = null;
+  produceErrbackRef.current = null;
+}
+
 
 function detectSpeaking(stream) {
   const audioContext = new AudioContext();
@@ -213,7 +266,7 @@ const consumeProducer = (producerData) => {
 
 useEffect(() => {
 
-function connectWebSocket() {
+async function connectWebSocket() {
 
   const ws = new WebSocket("wss://azure.domtech.co.ke");
 
@@ -224,12 +277,18 @@ function connectWebSocket() {
     setSpinnerInfo("Setting up Room");
     ws.send(JSON.stringify({
       type: "register",
+      name: name,
+      isHost: isHost,
       participantId: participantId,
       roomId: roomId
     }));
   };
 
   ws.onclose = () => {
+
+    resetWebRTCState();
+
+
     alert("Internet disconnected. Retrying to connect...");
 
     retryTimer = setTimeout(() => {
@@ -237,10 +296,21 @@ function connectWebSocket() {
     }, 2000);
   };
 
-  ws.onmessage = (event) => {
+  ws.onmessage = async (event) => {
     const data = JSON.parse(event.data);
    
     if (data.type === "registered") {
+
+   localStorage.setItem("participantId", data.participantId);
+
+  consumingProducers.current.clear();
+
+  if (!device.loaded) {
+    await device.load({
+      routerRtpCapabilities: data.rtpCapabilities
+    });
+  }
+
      ws.send(JSON.stringify({
       type: "get-room-state",
       participantId: participantId,
@@ -260,6 +330,7 @@ ws.send(JSON.stringify({
    participantId: participantId,
    direction: "send"
   }));
+
 
 
 }
@@ -790,6 +861,13 @@ useEffect(() => {
       <p>{roomAction}</p>
        </div>)}
        <div>
+        {/*<button>
+          <FontAwesomeIcon
+            icon={faMessage}
+            size="2x"
+            color="maroon"
+          />
+         </button>*/}
          <button 
            onClick={handleMicrophone} 
            disabled={micDisabled}>

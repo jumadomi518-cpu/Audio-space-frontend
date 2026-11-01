@@ -20,35 +20,28 @@ async function handleEnterRoom(e) {
   setBtnDisaled(true);
 
   try {
-    const res = await fetch("https://azure.domtech.co.ke⁠/join-room", {
+
+    const res = await fetch("https://azure.domtech.co.ke⁠/check-room", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        name: name.trim(),
         roomId: roomId,
-        participantId: localStorage.getItem("participantId"),
-        isHost: localStorage.getItem("isHost") === "true"
       })
     });
 
     const data = await res.json();
 
-    if (!res.ok || !data.successful) {
-      throw new Error(data.message || "Failed to join room");
+    if (!res.ok || !data.exists) {
+      alert("The room does not exist");
+      return;
     }
 
-    localStorage.setItem("participantId", data.participantId);
-    localStorage.removeItem("isHost");
 
-    if (!device.loaded) {
-     await device.load({
-      routerRtpCapabilities: data.rtpCapabilities
-    });
-   }
+    localStorage.setItem("name", name);
 
-    navigate(`/room/${roomId}`, { replace: true });
+    navigate(`/room/${roomId}/`, { replace: true });
 
   } catch (err) {
     alert(err.message);
