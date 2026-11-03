@@ -25,6 +25,9 @@ import Whiteboard from "../components/Whiteboard";
  const { roomId } = useParams();
  const [ loadingRoom, setLoadingRoom ] = useState(true);
  const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
+ const [ showEnableAudio, setShowEnableAudio ] = useState(false);
+ const [ audioEnabled, setAudioEnabled ] = useState(false);
+
 
  const navigate = useNavigate();
  
@@ -65,6 +68,28 @@ import Whiteboard from "../components/Whiteboard";
 
 const device = deviceRef.current;
 
+
+async function enableAudio() {
+  try {
+    const audios = [...audioElementsRef.current.values()];
+
+    await Promise.all(
+      audios.map(async (audio) => {
+        try {
+          await audio.play();
+        } catch (error) {
+          console.warn("Audio still blocked:", error);
+        }
+      })
+    );
+
+    setAudioEnabled(true);
+    setShowEnableAudio(false);
+
+  } catch (error) {
+    console.error("Audio activation failed:", error);
+  }
+}
 
 
 async function handleShare() {
@@ -178,9 +203,10 @@ function detectSpeaking(stream) {
 
 
 async function startSpeaking() {
+
+console.log("[MIC] Starting microphone...");
+
   try {
-
-
      if (audioProducerRef.current &&
         !audioProducerRef.current.closed) {
       return audioProducerRef.current;
@@ -203,6 +229,12 @@ async function startSpeaking() {
   video: false
 });
 
+console.log("[MIC] Permission granted:", {
+  tracks: stream.getAudioTracks().length,
+  state: stream.getAudioTracks()[0]?.readyState,
+  enabled: stream.getAudioTracks()[0]?.enabled
+});
+
     localStreamRef.current = stream;
   
      detectSpeaking(stream);  
@@ -220,6 +252,12 @@ async function startSpeaking() {
     const producer = await sendTransport.produce({
       track: audioTrack
     });
+
+console.log("[PRODUCER] Created:", {
+  id: producer.id,
+  kind: producer.kind,
+  paused: producer.paused
+});
 
     audioProducerRef.current = producer;
 
@@ -301,9 +339,9 @@ async function connectWebSocket() {
    
     if (data.type === "registered") {
 
-   localStorage.setItem("participantId", data.participantId);
+    localStorage.setItem("participantId", data.participantId);
 
-  consumingProducers.current.clear();
+    consumingProducers.current.clear();
 
   if (!device.loaded) {
     await device.load({
@@ -347,6 +385,7 @@ ws.send(JSON.stringify({
       setHostId(host?.id);
       setSpinnerInfo("Your Room is ready");
       setLoadingRoom(false);
+      setShowEnableAudio(true);
     }
 
 
@@ -510,37 +549,7 @@ if (data.type === "existingProducers") {
 
 
 if (data.type === "newProducer") {
-
-consumeProducer(data);
-
-  /*if (data.participantId === participantId) {
-    return;
-  }
-
-  if (data.kind !== "audio") {
-    return;
-  }
-
-  if (!device || !device.loaded) {
-    console.error("Mediasoup Device is not loaded");
-    return;
-  }
-
-  if (!recvTransportRef.current) {
-    console.error("Receive transport is not ready");
-    return;
-  }
-
-  ws.send(JSON.stringify({
-    type: "consume",
-    roomId,
-    participantId,
-    transportId: recvTransportRef.current.id,
-    producerId: data.producerId,
-    rtpCapabilities: device.rtpCapabilities
-  }));
-*/
-
+ consumeProducer(data);
 }
 
 
@@ -554,7 +563,7 @@ consumeProducer(data);
 if (data.type === "consumerCreated") {
 
   if (!data.successful) {
-    console.error("Consumer creation failed:", data.message);
+    alert("Consumer creation failed:", data.message);
     return;
   }
 
@@ -598,14 +607,15 @@ if (data.type === "consumerCreated") {
       }));
 
       // Attempt to play the incoming audio.
-      try {
-        await audio.play();
-      } catch (error) {
-        alert(
-          "Browser blocked audio playback. Tap the page and try again.",
-          error
-        );
-      }
+
+      if (audioEnabled) {
+        try {
+    await audio.play();
+  } catch (error) {
+    console.warn("Audio playback failed:", error);
+    setAudioEnabled(false);
+  }
+}
 
       // Clean up when the consumer or its transport closes.
       const cleanup = () => {
@@ -812,6 +822,14 @@ useEffect(() => {
           <p>{spinnerInfo}</p>
        </div>
      </div>)}
+
+    {showEnableAudio && (
+     <div className="overlay">
+       <div className="spinnerContainer">
+         <button onClick={enableAudio} className="audioBtn">Enable Audio</button>
+       </div>
+     </div>)}
+
      <main>
       <div className="participants">
         <h3>Participants: <span style={{ color: "green" }}>{participants.length > 0 ? participants.length : "..."}</span></h3>
