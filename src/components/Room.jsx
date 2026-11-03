@@ -215,7 +215,7 @@ console.log("[MIC] Starting microphone...");
     const sendTransport = sendTransportRef.current;
 
     if (!sendTransport) {
-      alert("Send transport is not ready");
+      alert("An error occured. Please exit room and join again");
       return;
     }
 
@@ -608,14 +608,15 @@ if (data.type === "consumerCreated") {
 
       // Attempt to play the incoming audio.
 
-      if (audioEnabled) {
+       if (audioEnabled) {   
         try {
-    await audio.play();
-  } catch (error) {
-    console.warn("Audio playback failed:", error);
-    setAudioEnabled(false);
-  }
-}
+          await audio.play();
+        } catch (error) {
+         console.warn("Audio playback failed:", error);
+         alert("Audio failed due to browser Restriction");
+         setAudioEnabled(false);
+        }
+       }
 
       // Clean up when the consumer or its transport closes.
       const cleanup = () => {
