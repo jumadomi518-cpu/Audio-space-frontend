@@ -26,7 +26,9 @@ import Whiteboard from "../components/Whiteboard";
  const [ loadingRoom, setLoadingRoom ] = useState(true);
  const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
  const [ showEnableAudio, setShowEnableAudio ] = useState(false);
- const [ audioEnabled, setAudioEnabled ] = useState(false);
+ const [ audioEnabled, setAudioEnabled ] = useState(
+  sessionStorage.getItem("audioEnabled") === "true"
+);
 
 
  const navigate = useNavigate();
@@ -82,6 +84,10 @@ async function enableAudio() {
         }
       })
     );
+
+
+   sessionStorage.setItem("audioEnabled", "true");
+
 
     setAudioEnabled(true);
     setShowEnableAudio(false);
@@ -386,7 +392,6 @@ ws.send(JSON.stringify({
       setHostId(host?.id);
       setSpinnerInfo("Your Room is ready");
       setLoadingRoom(false);
-      setShowEnableAudio(true);
     }
 
 
@@ -609,7 +614,6 @@ if (data.type === "consumerCreated") {
 
       // Attempt to play the incoming audio.
 
-       if (audioEnabled) {   
         try {
           await audio.play();
         } catch (error) {
@@ -617,7 +621,7 @@ if (data.type === "consumerCreated") {
          alert("Audio failed due to browser Restriction");
          setAudioEnabled(false);
         }
-       }
+       
 
       // Clean up when the consumer or its transport closes.
       const cleanup = () => {
