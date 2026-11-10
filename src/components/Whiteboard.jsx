@@ -144,6 +144,7 @@ export default function Whiteboard({
 ws,
 roomId,
 participantId,
+name,
 canDraw = true
 }) {
 const scrollRef = useRef(null);
@@ -173,7 +174,8 @@ const [color, setColor] = useState(COLORS[0]);
 const [tool, setTool] = useState("pen");
 const [mode, setMode] = useState("draw");
 const [boardWidth, setBoardWidth] = useState(window.innerWidth);
-
+const [ writerName, setWriterName ] = useState("");
+const [ actionMsg, setActionMsg ] = useState("");
 
 useEffect(() => {
   const updateDimensions = () => {
@@ -214,6 +216,7 @@ return false;
       type: "whiteboard",
       roomId,
       participantId,
+      name,
       ...message
     })
   );
@@ -724,14 +727,30 @@ function handleMessage(event) {
     return;
   }
 
+  setWriterName(data?.name)
+
   if (data.type !== "whiteboard") return;
   if (data.roomId !== roomId) return;
 
   if (data.participantId === participantId) {
-    return;
+
+  if (data.action === "points" || data.action === "start") {
+    setActionMsg(" is writing");
+  }
+
+  if (data.action === "erase") {
+    setActionMsg(" is erasing");
   }
 
   if (data.action === "clear") {
+    setActionMsg(" has cleared board");
+  }
+
+  return;
+}
+
+  if (data.action === "clear") {
+    setActionMsg(" has cleared board");
     strokesRef.current = [];
     strokeMapRef.current.clear();
 
@@ -740,6 +759,7 @@ function handleMessage(event) {
   }
 
   if (data.action === "erase") {
+    setActionMsg(" is erasing");
     applyEraser(
       data.points || [],
       data.widthRatio || ERASER_WIDTH_RATIO
@@ -749,6 +769,7 @@ function handleMessage(event) {
   }
 
   const id = data.strokeId;
+
 
   if (!id) return;
 
@@ -773,6 +794,7 @@ function handleMessage(event) {
   }
 
   if (data.action === "points") {
+    setActionMsg(" is writing");
     let stroke = strokeMapRef.current.get(id);
 
     if (!stroke) {
@@ -952,6 +974,9 @@ return (
             Clear
           </button>
         </div>
+     {writerName && (
+       <p className="boardMsg"><span>{writerName}</span><span>{actionMsg}</span></p>
+     )}
       </>
     ) : (
       <strong>Class whiteboard</strong>

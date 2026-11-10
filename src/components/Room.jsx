@@ -638,7 +638,6 @@ if (data.type === "consumerCreated") {
 
 
 if (data.type === "participantLeft") {
-  alert("Someone left");
   setParticipants((prev) =>
     prev.filter((p) => p.id !== data.participantId)
   );
@@ -871,6 +870,7 @@ useEffect(() => {
           ws={wsRef.current}
           roomId={roomId}
           participantId={participantId}
+          name={name}
           canDraw={true}
         />
       </div>
