@@ -727,10 +727,11 @@ function handleMessage(event) {
     return;
   }
 
-  setWriterName(data?.name)
 
   if (data.type !== "whiteboard") return;
   if (data.roomId !== roomId) return;
+
+  setWriterName(data?.name);
 
   if (data.participantId === participantId) {
 
