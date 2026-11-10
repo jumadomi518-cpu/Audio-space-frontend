@@ -326,8 +326,9 @@ async function connectWebSocket() {
 
     resetWebRTCState();
 
+    setSpinnerInfo("Reconnecting to Audio");
+    setLoadingRoom(true);
 
-    alert("Internet disconnected. Retrying to connect...");
 
     retryTimer = setTimeout(() => {
       connectWebSocket();
