@@ -638,6 +638,7 @@ if (data.type === "consumerCreated") {
 
 
 if (data.type === "participantLeft") {
+  alert("Someone left");
   setParticipants((prev) =>
     prev.filter((p) => p.id !== data.participantId)
   );
