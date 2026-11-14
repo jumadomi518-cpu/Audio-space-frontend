@@ -29,13 +29,22 @@ import Whiteboard from "../components/Whiteboard";
  const [ audioEnabled, setAudioEnabled ] = useState(
   sessionStorage.getItem("audioEnabled") === "true"
 );
+const [ transcript, setTranscript ] = useState("");
+const [ liveCaption, setLiveCaption ] = useState("");
 
+const [ showKSL, setShowKSL ] = useState(false);
 
  const navigate = useNavigate();
  
  const participantId = localStorage.getItem("participantId") || null;
  const name = localStorage.getItem("name");
  const isHost = localStorage.getItem("isHost") === "true";
+
+
+
+
+
+
 
 
  const wsRef = useRef(null);
@@ -63,6 +72,101 @@ import Whiteboard from "../components/Whiteboard";
  const audioContextRef = useRef(null);
  const speakingRef = useRef(false);
  const animationFrameRef = useRef(null);
+
+
+const transcriptionContextRef = useRef(null);
+const transcriptionProcessorRef = useRef(null);
+const transcriptionSourceRef = useRef(null);
+const transcriptionGainRef = useRef(null);
+
+const transcriptionReadyRef = useRef(false);
+const pendingTranscriptionAudioRef = useRef([]);
+
+async function startTranscriptionCapture(audioTrack) {
+  const ws = wsRef.current;
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    alert("Not connected");
+    throw new Error("WebSocket is not connected");
+  }
+
+  // Wait for the backend's readiness confirmation.
+  transcriptionReadyRef.current = false;
+  pendingTranscriptionAudioRef.current = [];
+
+  const context = new AudioContext();
+  await context.resume();
+
+  const source = context.createMediaStreamSource(
+    new MediaStream([audioTrack])
+  );
+
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  const silentGain = context.createGain();
+
+  silentGain.gain.value = 0;
+
+  processor.onaudioprocess = (event) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    if (!transcriptionReadyRef.current) return;
+
+
+    const input = event.inputBuffer.getChannelData(0);
+    const inputRate = context.sampleRate;
+
+    const outputLength = Math.floor(
+      input.length * 16000 / inputRate
+    );
+
+    const pcm = new Int16Array(outputLength);
+
+    for (let i = 0; i < outputLength; i++) {
+      const position = i * inputRate / 16000;
+      const index = Math.floor(position);
+      const fraction = position - index;
+
+      const first = input[index] || 0;
+      const second = input[index + 1] ?? first;
+
+      const sample = first + (second - first) * fraction;
+      const clamped = Math.max(-1, Math.min(1, sample));
+
+      pcm[i] = clamped < 0
+        ? clamped * 32768
+        : clamped * 32767;
+    }
+
+    const audioChunk = pcm.buffer;
+
+    if (!transcriptionReadyRef.current) {
+      const queue = pendingTranscriptionAudioRef.current;
+
+      // Keep at most about two seconds of audio.
+      if (queue.length >= 24) {
+        queue.shift();
+      }
+
+      queue.push(audioChunk);
+      return;
+    }
+
+    if (ws.bufferedAmount <= 256 * 1024) {
+      ws.send(audioChunk);
+    }
+  };
+
+  source.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(context.destination);
+
+  transcriptionContextRef.current = context;
+  transcriptionSourceRef.current = source;
+  transcriptionProcessorRef.current = processor;
+  transcriptionGainRef.current = silentGain;
+}
+  
+      
+
 
  if (!deviceRef.current) {
   deviceRef.current = new Device();
@@ -267,6 +371,9 @@ console.log("[PRODUCER] Created:", {
 
     audioProducerRef.current = producer;
 
+    await startTranscriptionCapture(audioTrack);
+
+
     producer.on("transportclose", () => {
       if (audioProducerRef.current === producer) {
         audioProducerRef.current = null;
@@ -284,7 +391,7 @@ console.log("[PRODUCER] Created:", {
 const consumingProducers = useRef(new Set());
 
 const consumeProducer = (producerData) => {
-  if (producerData.participantId === participantId) return;
+ if (producerData.participantId === participantId) return;
   const ws = wsRef.current;
 
 
@@ -332,7 +439,7 @@ async function connectWebSocket() {
 
     resetWebRTCState();
 
-    setSpinnerInfo("Reconnecting to Audio");
+    setSpinnerInfo("Disconnected. Check your internet connection.");
     setLoadingRoom(true);
 
 
@@ -346,7 +453,16 @@ async function connectWebSocket() {
    
     if (data.type === "registered") {
 
-    localStorage.setItem("participantId", data.participantId);
+    const participantId = data.participantId;
+
+
+  if (!participantId) {
+    console.error("Registration failed: participantId is missing");
+    return;
+  }
+
+  
+  localStorage.setItem("participantId", participantId);
 
     consumingProducers.current.clear();
 
@@ -379,6 +495,29 @@ ws.send(JSON.stringify({
 
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     // Refresh the participant list after reconnecting
@@ -697,6 +836,46 @@ if (data.type === "microphone-update") {
   );
  }
 
+if (data.type === "transcription-ready") {
+  
+  if (data.ready && data.roomId === roomId) {
+    transcriptionReadyRef.current = true;
+    const ws = wsRef.current;
+    const queuedAudio = pendingTranscriptionAudioRef.current;
+
+    pendingTranscriptionAudioRef.current = [];
+
+
+    for (const chunk of queuedAudio) {
+      if (
+        ws?.readyState === WebSocket.OPEN &&
+        ws.bufferedAmount <= 256 * 1024
+      ) {
+        ws.send(chunk);
+      }
+    }
+  } else {
+    transcriptionReadyRef.current = false;
+    console.error("[TRANSCRIPTION] Backend failed to initialize");
+  }
+
+  return;
+}
+
+
+
+if (data.type === "transcription") {
+
+  if (data.isFinal) {
+    setTranscript(prev =>
+      `${prev} ${data.transcript}`.trim()
+    );
+    setLiveCaption(data.transcript);
+  } else {
+    setLiveCaption(data.transcript);
+  }
+}
+
 
 if (data.type === "speaking-update") {
   setParticipants(prev =>
@@ -768,6 +947,9 @@ async function handleMicrophone() {
 
       setMuted(true);
 
+     
+      transcriptionReadyRef.current = false;
+
       sendStatus("microphone", "muted");
     }
 
@@ -837,49 +1019,96 @@ useEffect(() => {
      </div>)}
 
      <main>
-      <div className="participants">
-        <h3>Participants: <span style={{ color: "green" }}>{participants.length > 0 ? participants.length : "..."}</span></h3>
-        <hr />
-        {participants.map((p, index) => {
-   
-        const initials = p?.name?.trim().split(/\s+/)[0]?.[0]?.toUpperCase() || "";
-         
-         return (
-          <div className="userInfo" key={index}>
-            <div className={p?.speaking ? "speakingIndicator" : ""}>
-              {p.hand === "lowered" ? (
-               <span><b>{initials || ""}</b></span>
-               ) : ( 
-               <FontAwesomeIcon
-                 icon={faHand}
-                 size="1.5"
-                 color="white"
-                />
-               )}
-             </div>
-            <p className="name">{p?.name}</p>
-            <FontAwesomeIcon
-              icon={p?.microphone === "unmuted" ? faMicrophone : faMicrophoneSlash}
-              color="grey"
-            />
+
+  <div className="participants">
+    <h3>
+      Participants:{" "}
+      <span style={{ color: "green" }}>
+        {participants.length > 0 ? participants.length : "..."}
+      </span>
+    </h3>
+
+    <hr />
+
+    {participants.map((p, index) => {
+      const initials =
+        p?.name?.trim().split(/\s+/)[0]?.[0]?.toUpperCase() || "";
+
+      return (
+        <div className="userInfo" key={index}>
+          <div className={p?.speaking ? "speakingIndicator" : ""}>
+            {p.hand === "lowered" ? (
+              <span><b>{initials}</b></span>
+            ) : (
+              <FontAwesomeIcon
+                icon={faHand}
+                size="1.5"
+                color="white"
+              />
+            )}
+          </div>
+
+          <p className="name">{p?.name}</p>
+
+          <FontAwesomeIcon
+            icon={p?.microphone === "unmuted" ? faMicrophone : faMicrophoneSlash}
+            color="grey"
+          />
         </div>
-         )
-       })}
+      );
+    })}
+  </div>
 
+  {/* Digital Board */}
+  <div className="board">
 
-      </div>
-      <div className="board">
-        <div className="shareParent"><button onClick={handleShare}>Share link</button><h3>Digital Board</h3></div>
-        <hr />
-        <Whiteboard
-          ws={wsRef.current}
-          roomId={roomId}
-          participantId={participantId}
-          name={name}
-          canDraw={true}
+    <div className="shareParent">
+      <button onClick={handleShare}>Share link</button>
+      <h3>Digital Board</h3>
+    </div>
+
+    <hr />
+
+    <div className="whiteboardArea">
+      <Whiteboard
+        ws={wsRef.current}
+        roomId={roomId}
+        participantId={participantId}
+        name={name}
+        canDraw={true}
+      />
+    </div>
+
+    <div className="captions">
+
+      {showKSL && (
+        <div className="ksl">
+          <div className="kslVideo">
+            {/* KSL video */}
+            <video
+          src="/recording.webm"
+          autoPlay
+          muted
+          loop
+          playsInline
         />
+          </div>
+
+          <p>{liveCaption || "Captions"}</p>
+        </div>
+      )}
+
+      <div className="kslBtn">
+        <button onClick={() => setShowKSL(prev => !prev)}>
+          {showKSL ? "Close KSL" : "KSL"}
+        </button>
       </div>
-     </main>
+
+    </div>
+  </div>
+
+</main>
+
      <footer>
       {loading && (
       <div className="action">

@@ -10,8 +10,8 @@
 .room {
   position: relative;
   width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 0;
+  height: 100dvh;
   overflow: hidden;
   overflow-x: hidden;
   background: white;
@@ -50,6 +50,7 @@
   width: 100%;
   height: 100vh;
   height: 100dvh;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
   padding-bottom: 90px;
@@ -130,12 +131,121 @@
 }
 
 /* Board section */
-.room main .board {
-  flex: 2;
-  min-width: 0;
-  min-height: 0;
+.board {
+  width: 100%;
   height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.shareParent {
+  flex-shrink: 0;
+}
+
+.board hr {
+  flex-shrink: 0;
+}
+
+.whiteboardArea {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* KSL section */
+.captions {
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 8px;
+  gap: 8px;
+  z-index: 2;
+  border-left: 1px solid grey;
+}
+
+/* Only allocate video space when KSL is open */
+.ksl {
+  width: 100%;
+  height: 300px;
+  display: flex;
+  background: #111827;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+}
+
+.kslVideo {
+  width: 50%;
+  height: 100%;
+  flex-shrink: 0;
+  background: #263244;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.kslVideo video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ksl p {
+  flex: 1;
+  color: #d1d5db;
+  font-size: 13px;
+  text-align: center;
+}
+
+.kslBtn {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  background-color: white;
+}
+
+.kslBtn button {
+  background: maroon;
+  color: white;
+  border: none;
+  padding: 9px 22px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .captions {
+    padding: 12px;
+    min-height: 190px;
+  }
+
+  .ksl {
+    gap: 10px;
+    min-height: 130px;
+  }
+
+  .kslVideo {
+    width: 100px;
+    height: 115px;
+  }
+
+
+
+  .ksl p {
+    font-size: 12px;
+  }
 }
 
 .room main .board h3 {
