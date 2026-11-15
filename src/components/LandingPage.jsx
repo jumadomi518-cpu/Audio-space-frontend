@@ -24,7 +24,10 @@ export function LandingPage() {
      const data = await res.json();
 
      if (data?.successful) {
-      localStorage.setItem("isHost", true);
+      localStorage.setItem(
+        `hostToken_${data.roomId}`,
+        data.hostToken
+      );
       navigate(`/join-room/${data?.roomId}`);
      } else {
        setBtnText("Create Room");

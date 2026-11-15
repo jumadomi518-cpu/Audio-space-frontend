@@ -38,8 +38,8 @@ const [ showKSL, setShowKSL ] = useState(false);
  
  const participantId = localStorage.getItem("participantId") || null;
  const name = localStorage.getItem("name");
- const isHost = localStorage.getItem("isHost") === "true";
-
+ const hostToken = localStorage.getItem(`hostToken_${roomId}`);
+ const [isHost, setIsHost] = useState(false);
 
 
 
@@ -391,7 +391,7 @@ console.log("[PRODUCER] Created:", {
 const consumingProducers = useRef(new Set());
 
 const consumeProducer = (producerData) => {
- if (producerData.participantId === participantId) return;
+// if (producerData.participantId === participantId) return;
   const ws = wsRef.current;
 
 
@@ -431,7 +431,8 @@ async function connectWebSocket() {
       name: name,
       isHost: isHost,
       participantId: participantId,
-      roomId: roomId
+      roomId: roomId,
+      hostToken
     }));
   };
 
@@ -453,6 +454,8 @@ async function connectWebSocket() {
    
     if (data.type === "registered") {
 
+   
+
     const participantId = data.participantId;
 
 
@@ -461,7 +464,7 @@ async function connectWebSocket() {
     return;
   }
 
-  
+  setIsHost(data?.isHost);
   localStorage.setItem("participantId", participantId);
 
     consumingProducers.current.clear();
