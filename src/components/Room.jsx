@@ -23,7 +23,7 @@ import Whiteboard from "../components/Whiteboard";
  const [ participantInfo, setParticipantInfo ] = useState({});
  const [ hostId, setHostId ] = useState(null);
  const { roomId } = useParams();
- const [ loadingRoom, setLoadingRoom ] = useState(true);
+ const [ loadingRoom, setLoadingRoom ] = useState(false);
  const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
  const [ showEnableAudio, setShowEnableAudio ] = useState(false);
  const [ audioEnabled, setAudioEnabled ] = useState(
@@ -391,7 +391,7 @@ console.log("[PRODUCER] Created:", {
 const consumingProducers = useRef(new Set());
 
 const consumeProducer = (producerData) => {
-// if (producerData.participantId === participantId) return;
+ if (producerData.participantId === participantId) return;
   const ws = wsRef.current;
 
 
@@ -429,7 +429,6 @@ async function connectWebSocket() {
     ws.send(JSON.stringify({
       type: "register",
       name: name,
-      isHost: isHost,
       participantId: participantId,
       roomId: roomId,
       hostToken
@@ -1050,10 +1049,14 @@ useEffect(() => {
               />
             )}
           </div>
-
+        
+         <div className="host">
           <p className="name">{p?.name}</p>
+          {p?.isHost && (<p className="hostLabel">host</p>)}
+         </div>
 
           <FontAwesomeIcon
+            className="micIcon"
             icon={p?.microphone === "unmuted" ? faMicrophone : faMicrophoneSlash}
             color="grey"
           />

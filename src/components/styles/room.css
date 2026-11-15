@@ -89,7 +89,7 @@
   min-width: 0;
 }
 
-.room main .participants .userInfo div {
+.room main .participants .userInfo div:first-child {
   background-color: green;
   border-radius: 50%;
   height: 40px;
@@ -103,13 +103,30 @@
   flex-shrink: 0;
 }
 
+.host {
+ display: flex;
+ flex-direction: column;
+}
+
+.hostLabel {
+ color: purple;
+ font-size: 12px;
+}
+
 /* Participant names */
 .room .name {
   min-width: 0;
   max-width: 100%;
+  flex: 1;
   overflow-wrap: anywhere;
   word-break: break-word;
   white-space: normal;
+}
+
+.room .micIcon {
+  align-self: center;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Speaking indicator */

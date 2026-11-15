@@ -59,7 +59,7 @@
   flex: 0 0 28px;
   border: 2px solid #fff;
   outline: 1px solid #d1d5db;
-  border-radius: 50%;
+  border-radius: 5px;
 }
 
 .whiteboard-color.selected {
@@ -73,6 +73,10 @@
 }
 
 .whiteboard-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   flex: 1;
   min-width: 0;
   padding: 10px 4px;
@@ -80,12 +84,12 @@
   border-radius: 10px;
   background: #f3f4f6;
   color: #111827;
-  font-size: 12px;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
 .whiteboard-tools button.active {
-  background: #7c3aed;
+  background: purple;
   color: #fff;
 }
 
@@ -115,3 +119,4 @@
  text-overflow: ellipsis;
  color: purple;
 }
+

@@ -1,3 +1,16 @@
+
+
+
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faPen,
+  faEraser,
+  faEye,
+  faTrash
+} from "@fortawesome/free-solid-svg-icons";
+
+
+
 import {
 useCallback,
 useEffect,
@@ -942,7 +955,8 @@ return (
             }
             onClick={() => updateTool("pen")}
           >
-            Pen
+            <FontAwesomeIcon icon={faPen} />
+            <span>Pen</span>
           </button>
 
           <button
@@ -954,7 +968,8 @@ return (
             }
             onClick={() => updateTool("eraser")}
           >
-            Eraser
+            <FontAwesomeIcon icon={faEraser} />
+            <span>Eraser</span>
           </button>
 
           <button
@@ -968,11 +983,13 @@ return (
               )
             }
           >
-           View
+           <FontAwesomeIcon icon={faEye} />
+           <span>View</span>
           </button>
 
           <button type="button" onClick={clearBoard}>
-            Clear
+            <FontAwesomeIcon icon={faTrash} />
+            <span>Clear</span>
           </button>
         </div>
      {writerName && (
