@@ -23,7 +23,7 @@ import Whiteboard from "../components/Whiteboard";
  const [ participantInfo, setParticipantInfo ] = useState({});
  const [ hostId, setHostId ] = useState(null);
  const { roomId } = useParams();
- const [ loadingRoom, setLoadingRoom ] = useState(false);
+ const [ loadingRoom, setLoadingRoom ] = useState(true);
  const [ spinnerInfo, setSpinnerInfo ] = useState("Etablishing connection");
  const [ showEnableAudio, setShowEnableAudio ] = useState(false);
  const [ audioEnabled, setAudioEnabled ] = useState(
